@@ -20,8 +20,9 @@ import {
 } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState, Skeleton } from '../../components/layout';
 import { useCatalog, CONCEPT_BY_KEY } from '../../lib/catalog';
+import { primaryMetricKey } from '../../lib/metrics';
 import { computeRange, formatByUnit, type RangeDays } from '../../lib/format';
-import { heroFromSummary, pickTrendMetric } from './clientMetrics';
+import { heroFromSummary } from './clientMetrics';
 
 function ClockIcon() {
   return (
@@ -80,7 +81,7 @@ export function ClientDashboardPage() {
   // Tendencia: cuenta primaria (la seleccionada o la primera conectada) + métrica del catálogo.
   const primary =
     sel.accountId !== 'ALL' ? accounts.find((a) => a.id === sel.accountId) : connected[0];
-  const trendMetric = pickTrendMetric(catalog.items, primary?.platform);
+  const trendMetric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
   const trendQ = useGetAccountsIdMetrics(
     primary?.id ?? 0,
     { metric: trendMetric ?? '', from: dr.from, to: dr.to, granularity: 'day' },

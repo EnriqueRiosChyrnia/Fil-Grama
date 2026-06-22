@@ -52,6 +52,8 @@ export function Topbar() {
         <LogoHorizontal height={30} />
       </NavLink>
 
+      {/* Nav top-level CONGELADO (Fase1 §0.2): Home siempre; Administración solo ADMIN.
+          Los tracks NO editan Topbar; la navegación contextual va por path string. */}
       <nav style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
         <NavLink to="/" end style={navStyle}>
           Clientes

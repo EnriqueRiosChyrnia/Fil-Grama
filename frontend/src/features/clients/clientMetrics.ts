@@ -1,45 +1,41 @@
 /**
- * Adaptadores summary → concepto CORE (Alcance/Seguidores/Interacciones/Engagement).
- *
- * ⚠️ BEST-EFFORT del esqueleto: el mapeo concepto→métricas concretas por red es
- * trabajo del track FA/FB sobre el catálogo. Acá hay heurísticas para que el molde
- * muestre un número cuando hay datos; con backend sin captura, devuelven null → "—".
+ * Adaptadores summary → concepto CORE para Home/Dashboard (territorio FA).
+ * El mapeo concepto→métricas vive compartido en `lib/metrics`; acá solo la
+ * agregación sobre el `SummaryResponse`.
  */
 import type { SummaryResponse } from '../../api/generated/model';
 import type { CoreConcept } from '../../lib/catalog';
+import { metricKeysForConcept } from '../../lib/metrics';
 
-const KEYWORDS: Record<CoreConcept, string[]> = {
-  alcance: ['reach', 'alcance', 'impr', 'view', 'vista', 'play'],
-  interacciones: ['engagement', 'interac', 'like', 'comment', 'reaction'],
-  seguidores: ['follower', 'fan', 'seguidor'],
-  engagement: [],
-};
+const isNum = (x: unknown): x is number => typeof x === 'number' && !Number.isNaN(x);
 
+/** Número agregado del cliente para un concepto, sobre todas sus redes. null = sin datos. */
 export function heroFromSummary(summary: SummaryResponse | undefined, concept: CoreConcept): number | null {
   const platforms = summary?.platforms;
   if (!platforms?.length) return null;
 
   if (concept === 'engagement') {
-    const rates = platforms.map((p) => p.engagementRate).filter((x): x is number => x != null);
-    if (!rates.length) return null;
-    return rates.reduce((a, b) => a + b, 0) / rates.length;
+    const rates = platforms.map((p) => p.engagementRate).filter(isNum);
+    return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null;
   }
 
-  if (concept === 'seguidores') {
-    const growth = platforms.map((p) => p.followerGrowth).filter((x): x is number => x != null);
-    if (growth.length) return growth.reduce((a, b) => a + b, 0);
-  }
-
-  const kw = KEYWORDS[concept];
+  const useLatest = concept === 'seguidores'; // stock (último valor); flujos usan total
   let total = 0;
   let found = false;
   for (const p of platforms) {
-    for (const m of p.metrics ?? []) {
-      const key = (m.metric ?? '').toLowerCase();
-      if (kw.some((k) => key.includes(k))) {
-        total += m.total ?? m.latest ?? 0;
+    const keys = metricKeysForConcept(concept, p.platform ?? '');
+    const metrics = p.metrics ?? [];
+    // Las keys están en orden de preferencia: tomamos la PRIMERA presente por red
+    // (no sumamos alternativas → evita doble conteo, ej. fb_page_views + _total).
+    for (const key of keys) {
+      const m = metrics.find((mm) => mm.metric === key);
+      if (!m) continue;
+      const v = useLatest ? m.latest ?? m.total : m.total ?? m.latest;
+      if (isNum(v)) {
+        total += v;
         found = true;
       }
+      break;
     }
   }
   return found ? total : null;
@@ -48,16 +44,4 @@ export function heroFromSummary(summary: SummaryResponse | undefined, concept: C
 /** Lista de redes presentes en el summary (para chips). */
 export function platformsFromSummary(summary: SummaryResponse | undefined): string[] {
   return (summary?.platforms ?? []).map((p) => p.platform ?? '').filter(Boolean);
-}
-
-/** Elige una métrica concreta del catálogo para la tendencia/sparkline de una red. */
-export function pickTrendMetric(
-  items: { key?: string; platform?: string; level?: string; tier?: string }[],
-  platform?: string,
-): string | undefined {
-  if (!platform) return undefined;
-  const p = platform.toUpperCase();
-  const candidates = items.filter((m) => (m.platform ?? '').toUpperCase() === p && m.level === 'ACCOUNT');
-  const reachy = candidates.find((m) => /reach|view|impr/i.test(m.key ?? ''));
-  return (reachy ?? candidates.find((m) => m.tier === 'CORE') ?? candidates[0])?.key;
 }

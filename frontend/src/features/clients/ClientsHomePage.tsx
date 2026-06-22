@@ -17,9 +17,10 @@ import {
   Sparkline,
 } from '../../components/ui';
 import { EmptyState, ErrorState, Skeleton } from '../../components/layout';
-import { CORE_CONCEPTS, CONCEPT_BY_KEY, useCatalog, type CoreConcept } from '../../lib/catalog';
+import { CORE_CONCEPTS, CONCEPT_BY_KEY, type CoreConcept } from '../../lib/catalog';
+import { primaryMetricKey } from '../../lib/metrics';
 import { computeRange, formatByUnit } from '../../lib/format';
-import { heroFromSummary, platformsFromSummary, pickTrendMetric } from './clientMetrics';
+import { heroFromSummary, platformsFromSummary } from './clientMetrics';
 
 const METRIC_KEY = 'fg.home.metric';
 const RANGE = computeRange(7); // Home: rango fijo 7 días (HANDOFF §8)
@@ -37,7 +38,6 @@ function initials(name?: string): string {
 /** Tarjeta de cliente: cada una resuelve su propio summary (hook por tarjeta). */
 function ClientCard({ client, concept, priority }: { client: ClientResponse; concept: CoreConcept; priority: boolean }) {
   const navigate = useNavigate();
-  const catalog = useCatalog();
   const summaryQ = useGetClientsClientIdSummary(client.id as number, { from: RANGE.from, to: RANGE.to });
   const summary = summaryQ.data?.data;
 
@@ -50,7 +50,7 @@ function ClientCard({ client, concept, priority }: { client: ClientResponse; con
   const accountsQ = useGetClientsClientIdAccounts(client.id as number, { query: { enabled: hasHero } });
   const accountsList = accountsQ.data?.data ?? [];
   const primary = accountsList.find((a) => (a.status ?? '').toUpperCase() === 'CONNECTED') ?? accountsList[0];
-  const sparkMetric = pickTrendMetric(catalog.items, primary?.platform);
+  const sparkMetric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
   const seriesQ = useGetAccountsIdMetrics(
     primary?.id ?? 0,
     { metric: sparkMetric ?? '', from: RANGE.from, to: RANGE.to, granularity: 'day' },

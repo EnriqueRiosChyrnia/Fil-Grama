@@ -13,13 +13,19 @@ const { protectedRoutes, publicRoutes } = collectRoutes();
  *   - catch-all → NotFound.
  */
 export const router = createBrowserRouter([
-  ...publicRoutes,
   {
-    element: <ProtectedRoute />,
+    // Root pathless: HydrateFallback evita el warning de CSR+lazy en el primer render.
+    HydrateFallback: () => null,
     children: [
+      ...publicRoutes,
       {
-        element: <AppLayout />,
-        children: [...protectedRoutes, { path: '*', element: <NotFound /> }],
+        element: <ProtectedRoute />,
+        children: [
+          {
+            element: <AppLayout />,
+            children: [...protectedRoutes, { path: '*', element: <NotFound /> }],
+          },
+        ],
       },
     ],
   },
