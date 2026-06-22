@@ -1,8 +1,21 @@
-target/
-*.class
-.env
-*.log
-.idea/
-*.iml
-.vscode/
+# OS
 .DS_Store
+
+# Logs / backups
+*.log
+*.bundle
+
+# Frontend deps/build
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.next/
+
+# Process / orchestration artifacts — not versioned (decisión del repo)
+/tracks/
+/parallel-sdd-orchestration/
+/orquestacion-multiagente.md
+/guia-feedback-diseño.md
+/prompts-pantallas-pendientes.md
+/prompts-pantallas-pendientes-v2.md
+/backend/ESTADO-INTEGRACION.md

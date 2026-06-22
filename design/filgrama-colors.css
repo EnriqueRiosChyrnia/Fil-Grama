@@ -1,0 +1,66 @@
+/* Fil-Grama — Paleta de marca (grises + azules) */
+/* Tokens base. Roles de UI al final. */
+
+:root {
+  /* Azul — marca principal */
+  --fg-blue-50:  #EAF2FB;
+  --fg-blue-100: #CADFF5;
+  --fg-blue-200: #9CC4ED;
+  --fg-blue-300: #6BA6E2;
+  --fg-blue-400: #3B85D6;
+  --fg-blue-500: #1E66BC; /* color de marca */
+  --fg-blue-600: #14529C;
+  --fg-blue-700: #0F3F78;
+  --fg-blue-800: #0A2C55;
+  --fg-blue-900: #061B36;
+
+  /* Gris — neutros (tono frío, combina con el azul) */
+  --fg-gray-50:  #F5F7FA;
+  --fg-gray-100: #E9EDF2;
+  --fg-gray-200: #D4DAE3;
+  --fg-gray-300: #B4BDCA;
+  --fg-gray-400: #8A95A6;
+  --fg-gray-500: #647084;
+  --fg-gray-600: #4A5568;
+  --fg-gray-700: #353D4D;
+  --fg-gray-800: #232A36;
+  --fg-gray-900: #141921;
+
+  /* Roles de UI — modo claro */
+  --fg-primary:        var(--fg-blue-500);
+  --fg-primary-hover:  var(--fg-blue-600);
+  --fg-primary-active: var(--fg-blue-700);
+  --fg-accent:         var(--fg-blue-300);
+  --fg-on-primary:     #FFFFFF;
+
+  --fg-bg-page:    var(--fg-gray-50);
+  --fg-bg-surface: #FFFFFF;
+  --fg-border:     var(--fg-gray-200);
+  --fg-border-strong: var(--fg-gray-300);
+
+  --fg-text-primary:   var(--fg-gray-900);
+  --fg-text-secondary: var(--fg-gray-500);
+  --fg-text-tertiary:  var(--fg-gray-400);
+  --fg-text-on-dark:   var(--fg-gray-50);
+}
+
+/* Roles de UI — modo oscuro */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg-primary:        var(--fg-blue-400);
+    --fg-primary-hover:  var(--fg-blue-300);
+    --fg-primary-active: var(--fg-blue-200);
+    --fg-accent:         var(--fg-blue-300);
+    --fg-on-primary:     var(--fg-gray-900);
+
+    --fg-bg-page:    var(--fg-gray-900);
+    --fg-bg-surface: var(--fg-gray-800);
+    --fg-border:     var(--fg-gray-700);
+    --fg-border-strong: var(--fg-gray-600);
+
+    --fg-text-primary:   var(--fg-gray-50);
+    --fg-text-secondary: var(--fg-gray-300);
+    --fg-text-tertiary:  var(--fg-gray-400);
+    --fg-text-on-dark:   var(--fg-gray-50);
+  }
+}
