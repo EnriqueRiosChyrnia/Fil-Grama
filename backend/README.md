@@ -59,6 +59,31 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -d '{"email":"admin@filgrama.local","password":"Admin123!"}'
 ```
 
+## Datos demo (perfil `local`)
+
+Al arrancar con `SPRING_PROFILES_ACTIVE=local` **contra una base limpia**, el
+`DemoDataSeedRunner` (`com.filgrama.devdata`) siembra datos realistas para que el front no tenga
+dashboards vacíos: ~10 clientes de una agencia paraguaya (2 de ellos `ARCHIVED`), ~16 cuentas
+sociales con combos variados de IG/FB/TikTok, ~350 posts y **series diarias de 90 días** de
+métricas de cuenta y de post (con tendencia, estacionalidad semanal y algún pico viral).
+
+- **Solo perfil `local`** (`@Profile("local")`): los tests e2e (perfil *default*) y los slices
+  **no** lo ejecutan, así que no afecta a la suite.
+- **Idempotente**: si ya hay clientes, **no hace nada** (un re-arranque no duplica). Para
+  regenerarlo desde cero, reseteá la base: `docker compose down -v && docker compose up -d db`.
+- Inserta **directo en las tablas** (no pasa por sync ni OAuth); los miles de snapshots van por
+  `JdbcTemplate.batchUpdate`.
+
+Credenciales demo (además del admin de arriba):
+
+| Usuario                    | Password       | Rol      |
+|----------------------------|----------------|----------|
+| `admin@filgrama.local`     | `Admin123!`    | ADMIN    |
+| `empleado1@filgrama.local` | `Empleado123!` | EMPLEADO |
+| `empleado2@filgrama.local` | `Empleado123!` | EMPLEADO |
+
+Cada empleado tiene 3 clientes marcados como prioritarios (`employee_client_priority`).
+
 ## Perfiles y seed de admin
 
 | Perfil           | Cuándo                          | Seed admin (`AdminSeedRunner`) | Secretos                                  |
