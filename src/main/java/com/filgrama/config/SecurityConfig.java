@@ -25,6 +25,6 @@ public class SecurityConfig {
                         // TODO: bloquear el resto cuando se implemente JWT.
                         .anyRequest().permitAll()
                 );
-        return http;
+        return http.build();
     }
 }
