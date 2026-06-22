@@ -46,6 +46,11 @@ oauth:
     client-key: ${TIKTOK_CLIENT_KEY:}
     client-secret: ${TIKTOK_CLIENT_SECRET:}
 
+# CORS para la SPA del front (Vite :5173, CRA :3000). Lista separada por comas;
+# override por env CORS_ALLOWED_ORIGINS. Se aplica a /api/v1/** (ver SecurityConfig).
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+
 # Almacenamiento de objetos S3-compatible (Track E).
 # Defaults = MinIO local; en PROD se sobreescriben por env hacia Cloudflare R2.
 storage:
