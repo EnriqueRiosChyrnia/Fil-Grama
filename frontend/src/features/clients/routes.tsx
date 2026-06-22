@@ -10,7 +10,15 @@ export const routes: AppRoute[] = [
     lazy: async () => ({ Component: (await import('./ClientsHomePage')).ClientsHomePage }),
   },
   {
+    path: 'clients/new',
+    lazy: async () => ({ Component: (await import('./NewClientPage')).NewClientPage }),
+  },
+  {
     path: 'clients/:clientId',
     lazy: async () => ({ Component: (await import('./ClientDashboardPage')).ClientDashboardPage }),
+  },
+  {
+    path: 'clients/:clientId/reconnect',
+    lazy: async () => ({ Component: (await import('./ReconnectPage')).ReconnectPage }),
   },
 ];
