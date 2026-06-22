@@ -52,6 +52,29 @@ implementada (Spring Boot 4, en `../backend`). **No** es una app de cara al clie
 2. Dónde guardar el refresh token: `localStorage` (simple, riesgo XSS) vs cookie httpOnly (toca backend).
 3. **CORS** del backend para el origen del front (coordinar con backend al integrar).
 
+## Integración Fase 1 (contratos congelados — leer antes de tocar features)
+
+- **Mutaciones (PATRÓN BENDECIDO).** orval v8 NO genera mutation hooks usables: activar
+  `query.useMutation` convierte los **GET** en `useMutation` (bug de naming). Por eso solo hay
+  `useQuery` para GET. Para escrituras: importar la **fn cruda** (`postX` / `patchX` / `deleteX` de
+  `api/generated/endpoints`) — pasa por el mutator (Bearer + refresh + `ApiError`) — y envolverla en un
+  `useMutation` propio; invalidar con `getGet<Name>QueryKey(...)`. (FA/FB/FC/FD ya tienen su helper local.)
+- **Concepto → métrica:** usar `lib/metrics` (`metricKeysForConcept` / `primaryMetricKey` / `isComparable`).
+  `engagement` no tiene key cruda (keys=[]); `/summary` da `engagementRate` por red. Derivación
+  interacciones/alcance·100 reproduce al backend. *Pendiente backend:* key de engagement por cuenta o
+  `/accounts/{id}/summary`.
+- **Catálogo `/metrics` sin `description`** → tooltips usan `displayName`; conceptos CORE usan el glosario
+  local (`lib/catalog/concepts`).
+- **Posts:** no existe `GET /posts/{id}` → el detalle recibe metadata por router state (deep-link/refresh
+  degrada amable). `PostListItem` sin `isEphemeral` → derivar de `postType==='STORY'`. Orden cronológico =
+  `published_at` (snake_case); `sort` sin dirección → 400.
+- **Reportes:** `rankBy` (`reach|views|engagement|likes`, default `reach`) no está en OpenAPI; alias
+  inválido → 422. *Pendiente:* exponerlo como enum en la spec.
+- **Tokens/format disponibles:** `--fg-warning-bg/-fg/-border` (PARTIAL/UNSUPPORTED); `formatDateTime` en
+  `lib/format`.
+
 ## Estado
 
-Frontend: **sin scaffoldear todavía**. Backend: v1 feature-complete (167 tests verdes), no desplegado.
+Fase 0 + 0.5 + **Fase 1 (tracks FA Clientes, FB Cuentas&Posts, FC Reportes&Comparar, FD Admin) mergeados
+en `main`**. Gate verde por merge (build+lint+typecheck+smoke Playwright). Backend v1 feature-complete;
+local en `:8080` (perfil `local` seedea demo).

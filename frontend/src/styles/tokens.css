@@ -59,6 +59,10 @@
   --fg-danger-fg:    #9A4A30;
   --fg-danger-line:  #C2603F;     /* iconos/bordes de error en inputs */
   --fg-danger-input-border: #E0A892;
+  /* Warning/amber — estados intermedios (sync PARTIAL, cuenta UNSUPPORTED). */
+  --fg-warning-bg:     #FEF3C7;
+  --fg-warning-fg:     #92600A;
+  --fg-warning-border: #FDE68A;
 
   /* Sombras / radios reutilizables */
   --fg-shadow-sm:  0 2px 8px rgba(20,25,33,.06);

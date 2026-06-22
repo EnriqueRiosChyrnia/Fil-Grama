@@ -4,6 +4,7 @@ export {
   formatPercent,
   formatByUnit,
   formatDate,
+  formatDateTime,
   trendFromDelta,
   EMPTY_VALUE,
 } from './format';

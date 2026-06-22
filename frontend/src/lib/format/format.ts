@@ -57,6 +57,21 @@ export interface TrendInfo {
   label: string | null;
 }
 
+const dateTimeFmt = new Intl.DateTimeFormat('es', {
+  day: 'numeric',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/** Fecha + hora corta (es). Para corridas de sync, timestamps de eventos, etc. */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return EMPTY;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return EMPTY;
+  return dateTimeFmt.format(d);
+}
+
 export function trendFromDelta(deltaPct: number | null | undefined): TrendInfo {
   if (deltaPct == null || Number.isNaN(deltaPct)) return { direction: 'flat', label: null };
   if (deltaPct > 0) return { direction: 'up', label: `▲ ${formatPercent(deltaPct)}` };
