@@ -139,6 +139,7 @@ export function ClientDashboardPage() {
         </div>
         <Button
           disabled={!canReport}
+          onClick={() => navigate(`/clients/${id}/report`)}
           title={canReport ? undefined : 'Disponible cuando haya datos'}
           leftIcon={
             <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>

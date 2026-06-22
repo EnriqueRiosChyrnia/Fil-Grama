@@ -9,6 +9,7 @@ import {
 } from '../../api/generated/endpoints';
 import type { ClientResponse } from '../../api/generated/model';
 import {
+  Button,
   Card,
   Input,
   SegmentedControl,
@@ -128,6 +129,7 @@ function CardSkeleton() {
 }
 
 export function ClientsHomePage() {
+  const navigate = useNavigate();
   const [concept, setConcept] = useState<CoreConcept>(
     () => (localStorage.getItem(METRIC_KEY) as CoreConcept) || 'alcance',
   );
@@ -171,20 +173,32 @@ export function ClientsHomePage() {
               : 'Resumen de los últimos 7 días'}
           </div>
         </div>
-        <div
-          style={{
-            height: 38,
-            background: 'var(--fg-bg-surface)',
-            border: '1px solid var(--fg-border-strong)',
-            borderRadius: 9,
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 14px',
-            fontSize: 13,
-            color: 'var(--fg-text-primary)',
-          }}
-        >
-          Últimos 7 días
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              height: 38,
+              background: 'var(--fg-bg-surface)',
+              border: '1px solid var(--fg-border-strong)',
+              borderRadius: 9,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 14px',
+              fontSize: 13,
+              color: 'var(--fg-text-primary)',
+            }}
+          >
+            Últimos 7 días
+          </div>
+          <Button
+            onClick={() => navigate('/clients/new')}
+            leftIcon={
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                <path d="M7 2.5v9M2.5 7h9" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            }
+          >
+            Nuevo cliente
+          </Button>
         </div>
       </div>
 
