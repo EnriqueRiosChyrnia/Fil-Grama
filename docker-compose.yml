@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${DB_NAME:-filgrama}
+      POSTGRES_USER: ${DB_USER:-filgrama}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-filgrama}
+    ports:
+      - "5432:5432"
+    volumes:
+      - filgrama_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-filgrama} -d ${DB_NAME:-filgrama}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-filgrama}
+      DB_USER: ${DB_USER:-filgrama}
+      DB_PASSWORD: ${DB_PASSWORD:-filgrama}
+      SPRING_PROFILES_ACTIVE: local
+    ports:
+      - "8080:8080"
+
+volumes:
+  filgrama_pgdata:
