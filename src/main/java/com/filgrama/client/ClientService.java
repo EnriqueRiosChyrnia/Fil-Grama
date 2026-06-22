@@ -51,7 +51,8 @@ public class ClientService {
             String like = "%" + q.trim().toLowerCase() + "%";
             specs.add((root, query, cb) -> cb.like(cb.lower(root.get("name")), like));
         }
-        Specification<Client> spec = specs.stream().reduce(Specification::and).orElse(null);
+        // Spring Data JPA 4 ya no acepta una Specification null: allOf(empty) = unrestricted (sin filtro).
+        Specification<Client> spec = Specification.allOf(specs);
         Page<ClientResponse> page = clientQuery.findAll(spec, pageable).map(mapper::toResponse);
         return PageResponse.of(page);
     }

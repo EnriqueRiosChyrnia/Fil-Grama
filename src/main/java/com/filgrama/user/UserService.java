@@ -51,7 +51,8 @@ public class UserService {
                     cb.like(cb.lower(root.get("fullName")), like),
                     cb.like(cb.lower(root.get("email")), like)));
         }
-        Specification<User> spec = specs.stream().reduce(Specification::and).orElse(null);
+        // Spring Data JPA 4 ya no acepta una Specification null: allOf(empty) = unrestricted (sin filtro).
+        Specification<User> spec = Specification.allOf(specs);
         return PageResponse.of(userQuery.findAll(spec, pageable).map(mapper::toResponse));
     }
 
