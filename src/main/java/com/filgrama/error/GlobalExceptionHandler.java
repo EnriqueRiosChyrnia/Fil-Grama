@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -23,9 +24,12 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
  *       propio {@code @RestControllerAdvice}.</li>
  *   <li>Hereda de {@link ResponseEntityExceptionHandler}: las excepciones estándar de
  *       Spring MVC (body ilegible, 405, etc.) ya salen como {@link ProblemDetail}.</li>
- *   <li>Los códigos 401/403 NO pasan por acá: ocurren en el filtro de seguridad, antes
- *       del controller. Los formatea el track Auth (A) en su {@code AuthenticationEntryPoint}
- *       / {@code AccessDeniedHandler}, reutilizando este mismo formato.</li>
+ *   <li>El 401 y el 403 de autorización a nivel de URL ocurren en el filtro de seguridad, antes
+ *       del controller, y los formatea el track Auth (A) en su {@code AuthenticationEntryPoint}
+ *       / {@code AccessDeniedHandler}. PERO el 403 de {@code @PreAuthorize} a nivel de método se
+ *       lanza DURANTE la invocación del controller, así que sí llega a este advice: lo
+ *       re-lanzamos ({@link #handleAccessDenied}) para que el {@code AccessDeniedHandler} lo
+ *       formatee como 403 en vez de que el catch-all lo degrade a 500.</li>
  * </ul>
  */
 @RestControllerAdvice
@@ -59,6 +63,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 HttpStatus.BAD_REQUEST, detail.isBlank() ? "Validation failed" : detail);
         pd.setTitle("Validation Failed");
         return ResponseEntity.badRequest().body(pd);
+    }
+
+    /**
+     * Re-lanza las {@link AccessDeniedException} (incluida {@code AuthorizationDeniedException} de
+     * {@code @PreAuthorize}) para que vuelvan a propagarse hasta el {@code ExceptionTranslationFilter}
+     * → {@code AccessDeniedHandler} (403 problem+json). Es más específico que {@link #handleUnexpected},
+     * así que gana la resolución y evita que un acceso denegado termine como 500.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
+        throw ex;
     }
 
     /** Red de seguridad: cualquier otra excepción no contemplada → 500 sin filtrar internos. */
