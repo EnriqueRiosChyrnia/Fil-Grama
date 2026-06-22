@@ -19,6 +19,26 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+# Cifrado de tokens OAuth en reposo (Track C / TokenCipher).
+# Default DEV estable; en PROD setear SECURITY_TOKEN_ENCRYPTION_KEY (openssl rand -base64 32).
+security:
+  token-encryption-key: ${SECURITY_TOKEN_ENCRYPTION_KEY:jCBVFCXsE7fpBhaXEW30ah5xcR5dy1YyNovheoobJus=}
+
+# Flujo OAuth de cuentas sociales (Track C / OAuthProperties prefix=oauth).
+oauth:
+  # Firma HMAC del state de un solo uso (base64, >=32 bytes). PROD: OAUTH_STATE_SECRET.
+  state-secret: ${OAUTH_STATE_SECRET:RmXiLVwyWORp/QGW1EIskYiVE3++6aRjJu7r90wHsE8=}
+  state-ttl-seconds: ${OAUTH_STATE_TTL_SECONDS:600}
+  front-redirect-url: ${OAUTH_FRONT_REDIRECT_URL:http://localhost:5173/oauth/result}
+  redirect-base-uri: ${OAUTH_REDIRECT_BASE_URI:http://localhost:8080}
+  # Credenciales de apps — vacías hasta registrar las apps reales (dev usa el mock provider).
+  meta:
+    app-id: ${META_APP_ID:}
+    app-secret: ${META_APP_SECRET:}
+  tiktok:
+    client-key: ${TIKTOK_CLIENT_KEY:}
+    client-secret: ${TIKTOK_CLIENT_SECRET:}
+
 management:
   endpoints:
     web:
