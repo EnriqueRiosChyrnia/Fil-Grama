@@ -19,6 +19,8 @@
 
     <properties>
         <java.version>25</java.version>
+        <!-- JDK 23+ desactiva el annotation processing implicito; Lombok requiere proc=full -->
+        <maven.compiler.proc>full</maven.compiler.proc>
     </properties>
 
     <dependencies>
@@ -44,6 +46,11 @@
         </dependency>
 
         <!-- Migraciones de base de datos -->
+        <!-- Boot 4 saco la autoconfig de Flyway de spring-boot-autoconfigure a su propio modulo -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
@@ -90,6 +97,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Boot 4 movio @WebMvcTest fuera de starter-test a su propio modulo -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
