@@ -86,23 +86,68 @@ es opaco y de un solo uso (anti-CSRF). El callback redirige a una URL del front 
 
 ## Métricas y dashboard
 
+Patrón de la industria (GA4 Data API `runReport`/`batchRunReports`, Adobe Analytics): **un endpoint
+de informe flexible que recibe varias métricas + rango de fechas en una sola request**, más una
+variante **batch** para traer varios informes en una llamada. No existe el patrón "una métrica por
+request" (eliminado, sin legacy). Convención de ruta: custom methods con `:` (Google AIP-136).
+
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/metrics` | catálogo `?platform=&level=` |
-| GET | `/accounts/{id}/metrics` | serie temporal `?metric=ig_reach&from=&to=&granularity=day` |
+| POST | `/accounts/{id}/metrics:report` | informe de series de cuenta: N métricas + rango en una request |
+| POST | `/metrics:batchReport` | batch: varios informes (cuentas/rangos) en una sola request |
+| POST | `/posts/{id}/metrics:report` | informe de series de un post (mismo shape) |
 | GET | `/clients/{clientId}/summary` | KPIs agregados `?from=&to=&platform=` |
 | GET | `/accounts/{id}/posts` | publicaciones `?from=&to=&page=&size=&sort=` |
-| GET | `/posts/{id}/metrics` | métricas del post `?metric=&from=&to=` |
 
 `metric` usa el `metric_key` del catálogo, con prefijo de red (`ig_reach`, `fb_page_views`,
 `tt_view_count`). [[05-catalogo-metricas]]
 
-Ejemplo serie temporal:
+### `POST /accounts/{id}/metrics:report`
+
+Request:
 ```json
-{ "accountId": 7, "metric": "ig_reach", "granularity": "day",
-  "points": [ {"capturedAt":"2026-06-01T03:00:00Z","value":12450},
-              {"capturedAt":"2026-06-02T03:00:00Z","value":13010} ] }
+{
+  "metrics": ["ig_reach", "ig_followers_count", "ig_total_interactions"],
+  "dateRange": { "from": "2026-03-24", "to": "2026-06-22" },
+  "granularity": "day"
+}
 ```
+- `metrics` — **requerido**, 1..N `metric_key` válidos del catálogo (validados contra `metrics`).
+- `dateRange` — opcional; default = últimos 90 días. `from > to` → `400`.
+- `granularity` — opcional, default `day` (v1 solo `day`; `week`/`month` reservados, sin reescritura).
+
+Response (una serie por métrica, lista para graficar):
+```json
+{
+  "accountId": 7,
+  "dateRange": { "from": "2026-03-24", "to": "2026-06-22" },
+  "granularity": "day",
+  "series": [
+    { "metric": "ig_reach", "unit": "count",
+      "points": [ {"date":"2026-06-01","value":12450}, {"date":"2026-06-02","value":13010} ] },
+    { "metric": "ig_followers_count", "unit": "count", "points": [ /* ... */ ] }
+  ]
+}
+```
+Rango sin datos → `series[].points` vacío (NO error). Métrica inexistente en el catálogo → `400`.
+
+### `POST /metrics:batchReport`
+
+Varios informes en una llamada (un round-trip para un dashboard multi-cuenta). Espejo de
+`batchRunReports` de GA4.
+```json
+{
+  "requests": [
+    { "accountId": 7,  "metrics": ["ig_reach"],                      "granularity": "day" },
+    { "accountId": 12, "metrics": ["tt_view_count","tt_follower_count"],
+      "dateRange": { "from": "2026-03-24", "to": "2026-06-22" } }
+  ]
+}
+```
+Response: `{ "reports": [ { /* shape de :report */ }, … ] }`, en el mismo orden de `requests`.
+Multi-tenant: cada `accountId` se resuelve a su `client_id` y se valida acceso de forma
+independiente. Límite v1: máx. 20 requests por batch (`400` si se excede).
 
 ---
 
