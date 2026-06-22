@@ -1,0 +1,35 @@
+/* Base global — Fil-Grama. Light forzado, tipografía Public Sans. */
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap');
+@import './styles/tokens.css';
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--fg-font);
+  background: var(--fg-bg-page);
+  color: var(--fg-text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+:focus-visible { outline: 2px solid var(--fg-primary); outline-offset: 2px; }
+
+@keyframes fg-spin { to { transform: rotate(360deg); } }
+@keyframes fg-shimmer { 0% { background-position: -360px 0; } 100% { background-position: 360px 0; } }
+
+.fg-skeleton {
+  background: #EAEEF3;
+  background-image: linear-gradient(90deg, #EAEEF3 0, #F3F6FA 180px, #EAEEF3 360px);
+  background-size: 720px 100%;
+  animation: fg-shimmer 1.25s linear infinite;
+  border-radius: var(--fg-radius-sm);
+}

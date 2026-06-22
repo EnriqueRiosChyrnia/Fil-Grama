@@ -1,0 +1,23 @@
+// API pública de componentes UI (CONGELADA — los tracks consumen, no editan).
+export { Button } from './Button';
+export type { ButtonProps, ButtonVariant, ButtonSize } from './Button';
+export { Input } from './Input';
+export type { InputProps } from './Input';
+export { PasswordInput } from './PasswordInput';
+export { Spinner } from './Spinner';
+export { Card } from './Card';
+export { SegmentedControl } from './SegmentedControl';
+export type { SegmentOption } from './SegmentedControl';
+export { InfoTooltip } from './InfoTooltip';
+export { NetworkChip } from './NetworkChip';
+export { networkLabel } from './networks';
+export type { Platform } from './networks';
+export { KpiCard } from './KpiCard';
+export type { KpiCardProps } from './KpiCard';
+export { DateRangeControl } from './DateRangeControl';
+export { NetworkAccountSelect } from './NetworkAccountSelect';
+export type { AccountLike, NetworkAccountValue } from './NetworkAccountSelect';
+export { Table } from './Table';
+export type { Column, SortState, SortDir } from './Table';
+export { TrendChart, Sparkline, CompareBars } from './charts';
+export type { TrendPoint, CompareDatum } from './charts';
