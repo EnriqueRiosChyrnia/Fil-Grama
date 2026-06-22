@@ -39,6 +39,20 @@ oauth:
     client-key: ${TIKTOK_CLIENT_KEY:}
     client-secret: ${TIKTOK_CLIENT_SECRET:}
 
+# Almacenamiento de objetos S3-compatible (Track E).
+# Defaults = MinIO local; en PROD se sobreescriben por env hacia Cloudflare R2.
+storage:
+  backend: ${STORAGE_BACKEND:s3}          # s3 | local
+  bucket: ${STORAGE_BUCKET:filgrama-media}
+  s3:
+    endpoint: ${STORAGE_S3_ENDPOINT:http://localhost:9000}
+    region: ${STORAGE_S3_REGION:us-east-1}            # R2 ignora la región; MinIO también
+    access-key: ${STORAGE_S3_ACCESS_KEY:filgrama}
+    secret-key: ${STORAGE_S3_SECRET_KEY:filgrama123}
+    path-style-access: ${STORAGE_S3_PATH_STYLE:true}  # true para MinIO; R2 también lo acepta
+  local:
+    base-dir: ${STORAGE_LOCAL_DIR:./var/media}        # fallback offline (backend=local)
+
 management:
   endpoints:
     web:
