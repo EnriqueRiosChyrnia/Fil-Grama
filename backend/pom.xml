@@ -45,6 +45,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
 
+        <!-- OpenAPI / Swagger UI (springdoc) — fuente del codegen del frontend (orval).
+             Boot 4 / Spring Framework 7 requiere la línea 3.x (la 2.x es para Boot 3). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>3.0.3</version>
+        </dependency>
+
         <!-- Migraciones de base de datos -->
         <!-- Boot 4 saco la autoconfig de Flyway de spring-boot-autoconfigure a su propio modulo -->
         <dependency>

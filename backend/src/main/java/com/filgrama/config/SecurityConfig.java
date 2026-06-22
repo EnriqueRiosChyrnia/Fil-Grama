@@ -50,7 +50,11 @@ public class SecurityConfig {
                                 "/actuator/health",
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
-                                "/api/v1/oauth/callback/**")
+                                "/api/v1/oauth/callback/**",
+                                // OpenAPI / Swagger UI (springdoc) — públicos para el codegen del front (orval).
+                                "/v3/api-docs/**",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
