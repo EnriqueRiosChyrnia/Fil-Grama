@@ -100,6 +100,13 @@
             <version>2.31.6</version>
         </dependency>
 
+        <!-- Reportes PDF (track G): render HTML -> PDF -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
