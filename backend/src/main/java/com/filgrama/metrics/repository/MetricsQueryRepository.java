@@ -5,6 +5,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -39,6 +40,53 @@ public class MetricsQueryRepository {
             Long id, Long accountId, String platform, String externalPostId, String postType,
             String permalink, String caption, String remoteThumbnailUrl, Instant publishedAt,
             BigDecimal sortValue) {
+    }
+
+    /** Punto crudo de una serie de informe: métrica + día + valor. */
+    public record SeriesRow(String metricKey, LocalDate date, BigDecimal value) {
+    }
+
+    /**
+     * Serie multi-métrica de una cuenta para un informe ({@code :report}). UNA sola query: filtra por
+     * {@code client_id} (multi-tenant), {@code account_id}, {@code metric_key IN (:metrics)} y rango de
+     * {@code capture_date}, ordenada por {@code metric_key, captured_at}. El service agrupa por métrica
+     * (nada de cargar-todo-y-filtrar-en-memoria). Granularidad v1 {@code day} → {@code date = capture_date}.
+     */
+    public List<SeriesRow> accountMetricSeries(Long clientId, Long accountId, Collection<String> metricKeys,
+                                               LocalDate from, LocalDate to) {
+        String sql = """
+                SELECT s.metric_key, s.capture_date, s.value
+                FROM account_metric_snapshots s
+                WHERE s.client_id = :clientId
+                  AND s.account_id = :accountId
+                  AND s.metric_key IN (:metricKeys)
+                  AND (CAST(:fromDate AS date) IS NULL OR s.capture_date >= CAST(:fromDate AS date))
+                  AND (CAST(:toDate AS date)   IS NULL OR s.capture_date <= CAST(:toDate AS date))
+                ORDER BY s.metric_key, s.captured_at
+                """;
+        MapSqlParameterSource params = baseParams(clientId, from, to)
+                .addValue("accountId", accountId)
+                .addValue("metricKeys", metricKeys);
+        return jdbc.query(sql, params, SERIES_ROW_MAPPER);
+    }
+
+    /** Serie multi-métrica de un post para un informe. Misma estrategia que {@link #accountMetricSeries}. */
+    public List<SeriesRow> postMetricSeries(Long clientId, Long postId, Collection<String> metricKeys,
+                                            LocalDate from, LocalDate to) {
+        String sql = """
+                SELECT s.metric_key, s.capture_date, s.value
+                FROM post_metric_snapshots s
+                WHERE s.client_id = :clientId
+                  AND s.post_id = :postId
+                  AND s.metric_key IN (:metricKeys)
+                  AND (CAST(:fromDate AS date) IS NULL OR s.capture_date >= CAST(:fromDate AS date))
+                  AND (CAST(:toDate AS date)   IS NULL OR s.capture_date <= CAST(:toDate AS date))
+                ORDER BY s.metric_key, s.captured_at
+                """;
+        MapSqlParameterSource params = baseParams(clientId, from, to)
+                .addValue("postId", postId)
+                .addValue("metricKeys", metricKeys);
+        return jdbc.query(sql, params, SERIES_ROW_MAPPER);
     }
 
     /**
@@ -159,6 +207,11 @@ public class MetricsQueryRepository {
                 .addValue("fromDate", from, Types.DATE)
                 .addValue("toDate", to, Types.DATE);
     }
+
+    private static final RowMapper<SeriesRow> SERIES_ROW_MAPPER = (rs, n) -> new SeriesRow(
+            rs.getString("metric_key"),
+            rs.getObject("capture_date", LocalDate.class),
+            rs.getBigDecimal("value"));
 
     private static final RowMapper<PostRow> POST_ROW_MAPPER = (rs, n) -> {
         OffsetDateTime published = rs.getObject("published_at", OffsetDateTime.class);

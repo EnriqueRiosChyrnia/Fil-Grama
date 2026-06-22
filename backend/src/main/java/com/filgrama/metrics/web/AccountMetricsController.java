@@ -5,43 +5,53 @@ import java.time.LocalDate;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.filgrama.metrics.dto.AccountSeriesResponse;
+import com.filgrama.metrics.dto.AccountReportResponse;
+import com.filgrama.metrics.dto.MetricsReportRequest;
 import com.filgrama.metrics.dto.PageResponse;
 import com.filgrama.metrics.dto.PostListItem;
 import com.filgrama.metrics.service.AccountPostsService;
-import com.filgrama.metrics.service.MetricSeriesService;
+import com.filgrama.metrics.service.MetricReportService;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Endpoints de cuenta:
- *   {@code GET /api/v1/accounts/{id}/metrics} — serie temporal de una métrica de cuenta.
- *   {@code GET /api/v1/accounts/{id}/posts}   — página de posts (ordenable por métrica).
+ *   {@code POST /api/v1/accounts/{id}/metrics:report} — informe de series (N métricas + rango).
+ *   {@code GET  /api/v1/accounts/{id}/posts}          — página de posts (ordenable por métrica).
+ *
+ * <p>Custom method {@code :report} (Google AIP-136). El {@code PathPattern} de Spring matchea el
+ * literal {@code metrics:report} como segmento, conviviendo con {@code GET /api/v1/metrics}.
  */
 @RestController
 @RequestMapping("/api/v1/accounts")
+@Tag(name = "Métricas")
 public class AccountMetricsController {
 
-    private final MetricSeriesService seriesService;
+    private final MetricReportService reportService;
     private final AccountPostsService postsService;
 
-    public AccountMetricsController(MetricSeriesService seriesService, AccountPostsService postsService) {
-        this.seriesService = seriesService;
+    public AccountMetricsController(MetricReportService reportService, AccountPostsService postsService) {
+        this.reportService = reportService;
         this.postsService = postsService;
     }
 
-    @GetMapping("/{id}/metrics")
-    public AccountSeriesResponse metrics(
-            @PathVariable Long id,
-            @RequestParam String metric,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(defaultValue = "day") String granularity) {
-        return seriesService.accountSeries(id, metric, from, to, granularity);
+    @Operation(summary = "Informe de series de una cuenta",
+            description = "Patrón GA4 runReport: N métricas + rango en una request. Una serie por métrica. "
+                    + "Métrica inválida → 400; from>to → 400; rango sin datos → serie con points vacío; "
+                    + "cuenta inexistente → 404.")
+    @PostMapping("/{id}/metrics:report")
+    public AccountReportResponse report(@PathVariable Long id, @RequestBody(required = false) MetricsReportRequest request) {
+        return reportService.accountReport(id, request);
     }
 
+    @Operation(summary = "Página de posts de una cuenta")
     @GetMapping("/{id}/posts")
     public PageResponse<PostListItem> posts(
             @PathVariable Long id,

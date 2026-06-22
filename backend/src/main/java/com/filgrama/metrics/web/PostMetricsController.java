@@ -1,34 +1,38 @@
 package com.filgrama.metrics.web;
 
-import java.time.LocalDate;
-
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.filgrama.metrics.dto.PostSeriesResponse;
-import com.filgrama.metrics.service.MetricSeriesService;
+import com.filgrama.metrics.dto.MetricsReportRequest;
+import com.filgrama.metrics.dto.PostReportResponse;
+import com.filgrama.metrics.service.MetricReportService;
 
-/** {@code GET /api/v1/posts/{id}/metrics} — serie temporal de una métrica de un post. */
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
+/**
+ * {@code POST /api/v1/posts/{id}/metrics:report} — informe de series de un post (mismo shape que el
+ * de cuenta, con {@code postId}). Custom method {@code :report} (Google AIP-136).
+ */
 @RestController
 @RequestMapping("/api/v1/posts")
+@Tag(name = "Métricas")
 public class PostMetricsController {
 
-    private final MetricSeriesService seriesService;
+    private final MetricReportService reportService;
 
-    public PostMetricsController(MetricSeriesService seriesService) {
-        this.seriesService = seriesService;
+    public PostMetricsController(MetricReportService reportService) {
+        this.reportService = reportService;
     }
 
-    @GetMapping("/{id}/metrics")
-    public PostSeriesResponse metrics(
-            @PathVariable Long id,
-            @RequestParam String metric,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return seriesService.postSeries(id, metric, from, to);
+    @Operation(summary = "Informe de series de un post",
+            description = "N métricas + rango en una request. Métrica inválida → 400; from>to → 400; "
+                    + "rango sin datos → serie con points vacío; post inexistente → 404.")
+    @PostMapping("/{id}/metrics:report")
+    public PostReportResponse report(@PathVariable Long id, @RequestBody(required = false) MetricsReportRequest request) {
+        return reportService.postReport(id, request);
     }
 }

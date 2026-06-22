@@ -65,23 +65,41 @@ class MetricCatalogServiceTest {
     }
 
     @Test
-    void requireMetricReturnsEntityWhenPresent() {
+    void requireReportMetricsResolvesInOrderAndDeDups() {
         when(metricRepository.findById("ig_reach"))
                 .thenReturn(Optional.of(metric("ig_reach", "INSTAGRAM", MetricLevel.ACCOUNT, MetricState.ACTIVE)));
-        assertThat(service.requireMetric("ig_reach").getKey()).isEqualTo("ig_reach");
+        when(metricRepository.findById("ig_post_likes"))
+                .thenReturn(Optional.of(metric("ig_post_likes", "INSTAGRAM", MetricLevel.POST, MetricState.ACTIVE)));
+
+        var resolved = service.requireReportMetrics(List.of("ig_reach", "ig_post_likes", "ig_reach"));
+
+        assertThat(resolved.keySet()).containsExactly("ig_reach", "ig_post_likes"); // orden + de-dup
+        assertThat(resolved.get("ig_reach").getUnit()).isEqualTo("count");
     }
 
     @Test
-    void requireMetricUnknownIsUnprocessable() {
+    void requireReportMetricsUnknownIsBadRequest() {
+        when(metricRepository.findById("ig_reach"))
+                .thenReturn(Optional.of(metric("ig_reach", "INSTAGRAM", MetricLevel.ACCOUNT, MetricState.ACTIVE)));
         when(metricRepository.findById("nope")).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.requireMetric("nope"))
+        assertThatThrownBy(() -> service.requireReportMetrics(List.of("ig_reach", "nope")))
                 .isInstanceOf(ApiException.class)
-                .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(422));
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(400));
     }
 
     @Test
-    void requireMetricBlankIsBadRequest() {
-        assertThatThrownBy(() -> service.requireMetric("  "))
+    void requireReportMetricsEmptyIsBadRequest() {
+        assertThatThrownBy(() -> service.requireReportMetrics(List.of()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(400));
+        assertThatThrownBy(() -> service.requireReportMetrics(null))
+                .isInstanceOf(ApiException.class)
+                .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(400));
+    }
+
+    @Test
+    void requireReportMetricsBlankKeyIsBadRequest() {
+        assertThatThrownBy(() -> service.requireReportMetrics(List.of("  ")))
                 .isInstanceOf(ApiException.class)
                 .satisfies(ex -> assertThat(((ApiException) ex).getStatus().value()).isEqualTo(400));
     }

@@ -1,6 +1,7 @@
 package com.filgrama.metrics.service;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -44,16 +45,31 @@ public class MetricCatalogService {
     }
 
     /**
-     * Devuelve la métrica del catálogo o lanza {@code 422} si el {@code metric_key} no existe.
-     * Falta del parámetro → {@code 400}.
+     * Valida la lista {@code metrics} de un informe ({@code :report}/{@code :batchReport}) contra el
+     * catálogo y devuelve las entidades en el orden pedido (de-duplicando, preservando la primera
+     * aparición — útil para tomar la {@code unit} de cada métrica). Reglas del contrato (spec/03,
+     * sección "Métricas y dashboard"): lista requerida 1..N; toda métrica inválida (ausente, vacía o
+     * inexistente en el catálogo) es un error de <b>validación de la request</b> → {@code 400}.
      */
-    public Metric requireMetric(String key) {
-        if (key == null || key.isBlank()) {
-            throw ApiException.badRequest("Falta el parámetro 'metric'");
+    public LinkedHashMap<String, Metric> requireReportMetrics(List<String> keys) {
+        if (keys == null || keys.isEmpty()) {
+            throw ApiException.badRequest("'metrics' es requerido (1..N metric_key)");
         }
-        return metricRepository.findById(key.trim())
-                .orElseThrow(() -> ApiException.unprocessable(
-                        "metric_key '%s' no existe en el catálogo".formatted(key)));
+        LinkedHashMap<String, Metric> resolved = new LinkedHashMap<>();
+        for (String raw : keys) {
+            if (raw == null || raw.isBlank()) {
+                throw ApiException.badRequest("'metrics' contiene un metric_key vacío");
+            }
+            String key = raw.trim();
+            if (resolved.containsKey(key)) {
+                continue; // de-dup: no repetimos la serie
+            }
+            Metric metric = metricRepository.findById(key)
+                    .orElseThrow(() -> ApiException.badRequest(
+                            "metric_key '%s' no existe en el catálogo".formatted(key)));
+            resolved.put(key, metric);
+        }
+        return resolved;
     }
 
     /** Búsqueda cruda sin validar (para resolver el campo de orden de posts). */
