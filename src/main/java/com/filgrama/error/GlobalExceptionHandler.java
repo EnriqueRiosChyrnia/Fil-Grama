@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -73,6 +74,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      */
     @ExceptionHandler(AccessDeniedException.class)
     public void handleAccessDenied(AccessDeniedException ex) throws AccessDeniedException {
+        throw ex;
+    }
+
+    /**
+     * Re-lanza las {@link AuthenticationException} de Spring Security (p. ej. credenciales/token
+     * inválidos resueltos durante la invocación del controller) para que el
+     * {@code ExceptionTranslationFilter} las derive al {@code AuthenticationEntryPoint} → 401
+     * problem+json, en vez de que el catch-all las degrade a 500. Mismo patrón que
+     * {@link #handleAccessDenied}.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    public void handleAuthentication(AuthenticationException ex) throws AuthenticationException {
         throw ex;
     }
 

@@ -23,6 +23,13 @@ spring:
 # Default DEV estable; en PROD setear SECURITY_TOKEN_ENCRYPTION_KEY (openssl rand -base64 32).
 security:
   token-encryption-key: ${SECURITY_TOKEN_ENCRYPTION_KEY:jCBVFCXsE7fpBhaXEW30ah5xcR5dy1YyNovheoobJus=}
+  # Firma HS256 del JWT (Track Auth / JwtProperties prefix=security.jwt).
+  # Default DEV inseguro; en PROD setear SECURITY_JWT_SECRET (>=32 bytes). En perfil 'prod' el
+  # boot ABORTA si sigue siendo este default (ver ProdSecretsValidator).
+  jwt:
+    secret: ${SECURITY_JWT_SECRET:dev-only-insecure-jwt-secret-change-me-please-min-32-bytes-0123456789}
+    access-ttl: ${SECURITY_JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${SECURITY_JWT_REFRESH_TTL:30d}
 
 # Flujo OAuth de cuentas sociales (Track C / OAuthProperties prefix=oauth).
 oauth:
