@@ -17,6 +17,7 @@ import com.filgrama.domain.enums.Platform;
 import com.filgrama.error.ApiException;
 import com.filgrama.oauth.OAuthException;
 import com.filgrama.oauth.OAuthExchangeResult;
+import com.filgrama.oauth.OAuthProfile;
 import com.filgrama.oauth.OAuthProviderRegistry;
 import com.filgrama.oauth.OAuthRefreshResult;
 import com.filgrama.oauth.Platforms;
@@ -190,11 +191,47 @@ public class AccountService {
         cred.setLastRefreshedAt(Instant.now());
         credentialRepo.save(cred);
 
+        // TAREA A: corrige nombre/handle reales en cada refresh (también en el sync diario), sin reconectar.
+        boolean accountChanged = applyProfile(account, refreshed.accessToken());
         if (account.getStatus() != AccountStatus.CONNECTED) {
             account.setStatus(AccountStatus.CONNECTED);
+            accountChanged = true;
+        }
+        if (accountChanged) {
             accountRepo.save(account);
         }
         return AccountResponse.from(account);
+    }
+
+    /**
+     * Best-effort: refresca nombre visible + handle desde el provider (user-info de la red) con el
+     * access token vigente. Sólo pisa campos que la red devuelve no-null y nunca rompe el refresh —
+     * si el provider no expone perfil (Meta/mock) o la llamada falla, deja la cuenta como estaba.
+     *
+     * @return {@code true} si cambió algún campo de la cuenta (para decidir si persistir).
+     */
+    private boolean applyProfile(SocialAccount account, String accessToken) {
+        OAuthProfile profile;
+        try {
+            profile = providers.forPlatform(account.getPlatform())
+                    .fetchProfile(account.getPlatform(), accessToken)
+                    .orElse(null);
+        } catch (OAuthException e) {
+            return false;
+        }
+        if (profile == null) {
+            return false;
+        }
+        boolean changed = false;
+        if (profile.handle() != null && !profile.handle().equals(account.getHandle())) {
+            account.setHandle(profile.handle());
+            changed = true;
+        }
+        if (profile.displayName() != null && !profile.displayName().equals(account.getDisplayName())) {
+            account.setDisplayName(profile.displayName());
+            changed = true;
+        }
+        return changed;
     }
 
     // ---- helpers ----

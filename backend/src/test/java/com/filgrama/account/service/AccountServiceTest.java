@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -30,7 +31,11 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.AccountStatus;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.error.ApiException;
+import com.filgrama.oauth.OAuthExchangeResult;
+import com.filgrama.oauth.OAuthProfile;
+import com.filgrama.oauth.OAuthProvider;
 import com.filgrama.oauth.OAuthProviderRegistry;
+import com.filgrama.oauth.OAuthRefreshResult;
 import com.filgrama.oauth.config.OAuthProperties;
 import com.filgrama.oauth.crypto.TokenCipher;
 import com.filgrama.oauth.provider.MockOAuthProvider;
@@ -179,6 +184,65 @@ class AccountServiceTest {
     void disconnectUnknownAccountThrowsNotFound() {
         when(accountRepo.findById(404L)).thenReturn(Optional.empty());
         assertThatThrownBy(() -> service.disconnect(404L)).isInstanceOf(ApiException.class);
+    }
+
+    @Test
+    void refreshTokenAlsoCorrectsDisplayNameAndHandle() {
+        // TAREA A: el refresh/sync corrige el nombre de cuentas viejas (ej. account 17) sin reconectar.
+        AccountService svc = new AccountService(accountRepo, credentialRepo, clientRepo,
+                new OAuthProviderRegistry(List.of(new ProfileFakeProvider())),
+                stateService, cipher, new OAuthProperties());
+
+        SocialAccount account = new SocialAccount();
+        account.setId(17L);
+        account.setPlatform(Platform.TIKTOK);
+        account.setStatus(AccountStatus.CONNECTED);
+        account.setHandle("oid-legacy");                 // estado viejo: open_id como handle
+        account.setDisplayName("TikTok oid-legacy");
+        when(accountRepo.findById(17L)).thenReturn(Optional.of(account));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountCredential cred = new AccountCredential();
+        cred.setAccountId(17L);
+        cred.setAccessTokenEnc(cipher.encrypt("old-access"));
+        cred.setRefreshTokenEnc(cipher.encrypt("old-refresh"));
+        when(credentialRepo.findById(17L)).thenReturn(Optional.of(cred));
+        when(credentialRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        svc.refreshToken(17L);
+
+        assertThat(account.getHandle()).isEqualTo("@cebandotertulias");
+        assertThat(account.getDisplayName()).isEqualTo("Cebando Tertulias");
+        verify(accountRepo).save(account);
+    }
+
+    /** Provider de prueba: refresca token y expone un perfil real (lo que hace TikTok en prod). */
+    private static final class ProfileFakeProvider implements OAuthProvider {
+        @Override
+        public boolean supports(Platform platform) {
+            return platform == Platform.TIKTOK;
+        }
+
+        @Override
+        public String buildAuthorizationUrl(Platform platform, String state) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public OAuthExchangeResult exchangeCode(Platform platform, String code) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public OAuthRefreshResult refreshToken(Platform platform, String accessToken, String refreshToken) {
+            return new OAuthRefreshResult("new-access", "new-refresh", "bearer", "user.info.profile",
+                    Instant.now().plusSeconds(86400));
+        }
+
+        @Override
+        public Optional<OAuthProfile> fetchProfile(Platform platform, String accessToken) {
+            return Optional.of(new OAuthProfile("@cebandotertulias", "Cebando Tertulias", "https://cdn/x.jpg"));
+        }
     }
 
     @Test

@@ -82,6 +82,13 @@
 es opaco y de un solo uso (anti-CSRF). El callback redirige a una URL del front con resultado
 (`?accountId=` o `?error=`).
 
+**Nombre/handle reales (todas las redes).** Al conectar, `displayName` y `handle` traen el nombre
+visible y el `@usuario` reales de la red (TikTok vía `GET /v2/user/info/`; Meta vía Graph). Es
+**best-effort**: si la llamada de perfil falla, el canje no se rompe y cae a un fallback (en TikTok,
+el `open_id`). El **refresh del token** (`/accounts/{id}/refresh-token` y el sync diario, que refresca
+el token de TikTok ~cada día) **re-sincroniza** `displayName`/`handle`, así que cuentas viejas se
+corrigen sin reconectar. `avatarUrl` aún no se persiste (no hay columna; ver reporte del track).
+
 ---
 
 ## Métricas y dashboard
@@ -194,6 +201,7 @@ Response (`200`) — `ReportData` serializado:
                              "value": 125400, "delta": 4200 } ],
               "engagementRate": 0.074, "followerGrowth": 180,
               "reach": { "current": 125400, "previous": 121200, "deltaPct": 3.5 } } ],
+  // `delta` (y `reach.previous`/`reach.deltaPct`) son nullable: ver "Deltas sin baseline" abajo.
   "topPosts": [ { "id": 42, "platform": "INSTAGRAM", "postType": "REEL", "displayType": "Reels",
                   "publishedAt": "2026-05-20T13:00:00Z", "publishedAtLocal": "20 may 2026",
                   "permalink": "https://…", "caption": "…",
@@ -210,6 +218,13 @@ Response (`200`) — `ReportData` serializado:
 además `postGroups`/`storyGroups`/`postHighlights`/`storyHighlights`. **Rango sin datos → estructura
 vacía amable** (`kpis` por red con métricas en cero, `topPosts`/grupos vacíos), NO un error. No
 inventa cifras: dato faltante = `null`. `:preview` no persiste fila ni archivo.
+
+**Deltas sin baseline (sin comparación).** Por KPI, `delta` es la variación vs el período anterior
+(`previousFrom`–`previousTo`). Si el período anterior **no tiene snapshots** para esa métrica (p. ej.
+cuenta recién conectada, sin historia previa), `delta` es **`null`** — NO el valor completo. Lo mismo
+con `reach.previous` y `reach.deltaPct` (`null` si no hay alcance previo). Se distingue "previo
+ausente" (`null` → el front muestra "—"/"sin comparación") de "previo = 0 real" (hay snapshot con
+valor 0 → `delta` es el valor completo, p. ej. de 0 a 150 ⇒ `delta = 150`). `value` siempre viene.
 
 ---
 

@@ -6,7 +6,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -17,7 +19,8 @@ import org.springframework.stereotype.Repository;
  * Consultas propias del reporte (nivel cliente, cruzando todas sus cuentas y agrupando por red/tipo)
  * que los servicios per-cuenta del track D no exponen. Vive en el paquete dueño del track — NO toca
  * {@code com.filgrama.repository} ni el repo de D. <b>Toda consulta filtra por {@code client_id}</b>
- * (multi-tenant) y es de sólo lectura sobre {@code posts} / {@code post_metric_snapshots}.
+ * (multi-tenant) y es de sólo lectura sobre {@code posts} / {@code post_metric_snapshots} (y
+ * {@code account_metric_snapshots} sólo para detectar presencia de baseline del período anterior).
  */
 @Repository
 public class ReportQueryRepository {
@@ -36,6 +39,34 @@ public class ReportQueryRepository {
 
     /** Último valor de una métrica de un post dentro del rango (para el ranking). */
     public record PostMetricValue(Long postId, String metricKey, BigDecimal value) {
+    }
+
+    /** Par (red, metric_key) con al menos un snapshot de cuenta en un rango. */
+    public record PlatformMetricKey(String platform, String metricKey) {
+    }
+
+    /**
+     * (red, metric_key) que TIENEN al menos un snapshot de cuenta del cliente en {@code [from, to]}.
+     * Permite distinguir "período previo ausente" (no aparece la clave → delta {@code null}) de
+     * "previo = 0 real" (aparece la clave, aunque el valor sea 0 → delta real). Sin redes ⇒ vacío.
+     */
+    public Set<PlatformMetricKey> accountMetricKeysPresent(Long clientId, Collection<String> platforms,
+                                                           LocalDate from, LocalDate to) {
+        if (platforms == null || platforms.isEmpty()) {
+            return Set.of();
+        }
+        String sql = """
+                SELECT DISTINCT a.platform AS platform, s.metric_key AS metric_key
+                FROM account_metric_snapshots s
+                JOIN social_accounts a ON a.id = s.account_id
+                WHERE s.client_id = :clientId
+                  AND a.platform IN (:platforms)
+                  AND (CAST(:fromDate AS date) IS NULL OR s.capture_date >= CAST(:fromDate AS date))
+                  AND (CAST(:toDate AS date)   IS NULL OR s.capture_date <= CAST(:toDate AS date))
+                """;
+        MapSqlParameterSource params = baseParams(clientId, from, to).addValue("platforms", platforms);
+        return new HashSet<>(jdbc.query(sql, params, (rs, n) ->
+                new PlatformMetricKey(rs.getString("platform"), rs.getString("metric_key"))));
     }
 
     /**
