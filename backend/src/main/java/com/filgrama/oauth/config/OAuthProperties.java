@@ -48,6 +48,8 @@ public class OAuthProperties {
         private String clientSecret = "";
         private String authorizeUrl = "https://www.tiktok.com/v2/auth/authorize/";
         private String tokenUrl = "https://open.tiktokapis.com/v2/oauth/token/";
+        /** user-info para resolver display_name/username/avatar reales (scope {@code user.info.profile}). */
+        private String userInfoUrl = "https://open.tiktokapis.com/v2/user/info/";
         /** spec/09 §TikTok. */
         private List<String> scopes = List.of(
                 "user.info.basic", "user.info.profile", "user.info.stats", "video.list");

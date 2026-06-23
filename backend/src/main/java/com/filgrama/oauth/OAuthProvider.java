@@ -1,5 +1,7 @@
 package com.filgrama.oauth;
 
+import java.util.Optional;
+
 import com.filgrama.domain.enums.Platform;
 
 /**
@@ -35,4 +37,14 @@ public interface OAuthProvider {
      * uno nuevo). El refresh token puede ser {@code null} para redes que no lo usan.
      */
     OAuthRefreshResult refreshToken(Platform platform, String accessToken, String refreshToken);
+
+    /**
+     * Perfil público actualizado de la cuenta (nombre visible / {@code handle} / avatar) a partir del
+     * access token vigente. <b>Best-effort</b>: el default no consulta nada ({@link Optional#empty()}),
+     * y los providers que exponen un endpoint de user-info lo sobreescriben (TikTok). Lo invocan el
+     * canje y el refresh/sync para corregir el nombre sin reconectar; si falla, no debe romper el flujo.
+     */
+    default Optional<OAuthProfile> fetchProfile(Platform platform, String accessToken) {
+        return Optional.empty();
+    }
 }

@@ -1,5 +1,7 @@
 package com.filgrama.oauth.provider;
 
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -17,6 +19,7 @@ import com.filgrama.domain.enums.AccountType;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.oauth.OAuthException;
 import com.filgrama.oauth.OAuthExchangeResult;
+import com.filgrama.oauth.OAuthProfile;
 import com.filgrama.oauth.OAuthProvider;
 import com.filgrama.oauth.OAuthRefreshResult;
 import com.filgrama.oauth.Platforms;
@@ -87,17 +90,54 @@ public class TikTokOAuthProvider implements OAuthProvider {
 
         JsonNode tok = post(tk.getTokenUrl(), form, false);
         String openId = require(OAuthHttpSupport.text(tok, "open_id"), "TikTok no devolvió open_id");
+        String accessToken = require(OAuthHttpSupport.text(tok, "access_token"), "TikTok no devolvió access_token");
+
+        // Nombre/handle reales vía user-info (best-effort): si falla, caemos al open_id.
+        OAuthProfile profile = fetchUserInfo(accessToken);
+        String handle = profile != null && profile.handle() != null ? profile.handle() : openId;
+        String displayName = profile != null && profile.displayName() != null
+                ? profile.displayName() : "TikTok " + openId;
+
         return new OAuthExchangeResult(
                 openId,
-                openId,
-                "TikTok " + openId,
+                handle,
+                displayName,
                 AccountType.CREATOR,
                 "{\"source\":\"tiktok\"}",
-                require(OAuthHttpSupport.text(tok, "access_token"), "TikTok no devolvió access_token"),
+                accessToken,
                 OAuthHttpSupport.text(tok, "refresh_token"),
                 "bearer",
                 OAuthHttpSupport.text(tok, "scope"),
                 OAuthHttpSupport.expiresAt(tok, "expires_in", ACCESS_TTL_SECONDS));
+    }
+
+    @Override
+    public Optional<OAuthProfile> fetchProfile(Platform platform, String accessToken) {
+        return Optional.ofNullable(fetchUserInfo(accessToken));
+    }
+
+    /**
+     * {@code GET /v2/user/info/} con el access token → display_name + username (→ "@handle") + avatar.
+     * <b>Best-effort</b>: cualquier falla (red, scope, token) ⇒ {@code null} para no romper el
+     * canje/refresh. Requiere el scope {@code user.info.profile} (ya pedido en la autorización).
+     */
+    private OAuthProfile fetchUserInfo(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return null;
+        }
+        try {
+            String url = props.getTiktok().getUserInfoUrl() + "?fields=open_id,display_name,username,avatar_url";
+            JsonNode user = get(url, accessToken).path("data").path("user");
+            String username = OAuthHttpSupport.text(user, "username");
+            String displayName = OAuthHttpSupport.text(user, "display_name");
+            String avatarUrl = OAuthHttpSupport.text(user, "avatar_url");
+            if (username == null && displayName == null && avatarUrl == null) {
+                return null;
+            }
+            return new OAuthProfile(username != null ? "@" + username : null, displayName, avatarUrl);
+        } catch (OAuthException e) {
+            return null;
+        }
     }
 
     @Override
@@ -119,6 +159,38 @@ public class TikTokOAuthProvider implements OAuthProvider {
     }
 
     // ---- HTTP / errores ----
+
+    /** GET con Bearer y 1 reintento ante transitorios; valida el envelope de error de TikTok (200 + error). */
+    private JsonNode get(String url, String bearer) {
+        int attempt = 0;
+        while (true) {
+            attempt++;
+            try {
+                String body = http.get().uri(url)
+                        .header("Authorization", "Bearer " + bearer)
+                        .retrieve().body(String.class);
+                JsonNode tree = OAuthHttpSupport.tree(body);
+                RuntimeException mapped = mapError(tree, false); // 200 + cuerpo de error
+                if (mapped != null) {
+                    throw mapped;
+                }
+                return tree;
+            } catch (RestClientResponseException e) {
+                HttpStatusCode status = e.getStatusCode();
+                if (OAuthHttpSupport.isTransient(status) && attempt < 2) {
+                    continue;
+                }
+                RuntimeException mapped = mapError(safeTree(e.getResponseBodyAsString()), false);
+                throw mapped != null ? mapped
+                        : new OAuthException("TikTok respondió " + status.value() + " en user/info");
+            } catch (ResourceAccessException e) {
+                if (attempt < 2) {
+                    continue;
+                }
+                throw new OAuthException("TikTok: timeout/IO en user/info", e);
+            }
+        }
+    }
 
     /** POST form-urlencoded con 1 reintento ante transitorios; valida el envelope de error de TikTok. */
     private JsonNode post(String url, MultiValueMap<String, String> form, boolean authIsRevoked) {

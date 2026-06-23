@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import com.filgrama.metrics.dto.SummaryResponse;
 import com.filgrama.metrics.service.SummaryService;
 import com.filgrama.reports.ReportFormat;
 import com.filgrama.reports.ReportQueryRepository;
+import com.filgrama.reports.ReportQueryRepository.PlatformMetricKey;
 import com.filgrama.reports.ReportQueryRepository.PostMetricValue;
 import com.filgrama.reports.ReportQueryRepository.PostRow;
 import com.filgrama.reports.ReportType;
@@ -103,7 +105,10 @@ public class ReportDataAssembler {
         Period period = previousPeriod(from, to);
         SummaryResponse current = summaryService.summary(clientId, from, to, null);
         SummaryResponse previous = summaryService.summary(clientId, period.previousFrom(), period.previousTo(), null);
-        List<PlatformKpis> kpis = buildKpis(platforms, current, previous);
+        // Qué métricas tienen baseline real en el período anterior (distingue "previo ausente" de "previo = 0").
+        Set<PlatformMetricKey> prevBaseline = reportQuery.accountMetricKeysPresent(
+                clientId, platforms, period.previousFrom(), period.previousTo());
+        List<PlatformKpis> kpis = buildKpis(platforms, current, previous, prevBaseline);
 
         // ---- Posts del cliente en el período (query propia de reporte) ----
         List<PostRow> rows = reportQuery.findPosts(clientId, from, to, platforms);
@@ -134,7 +139,8 @@ public class ReportDataAssembler {
 
     // ============================ KPIs ============================
 
-    private List<PlatformKpis> buildKpis(List<String> platforms, SummaryResponse current, SummaryResponse previous) {
+    private List<PlatformKpis> buildKpis(List<String> platforms, SummaryResponse current,
+                                         SummaryResponse previous, Set<PlatformMetricKey> prevBaseline) {
         Map<String, PlatformSummary> currByPlatform = byPlatform(current);
         Map<String, PlatformSummary> prevByPlatform = byPlatform(previous);
 
@@ -152,11 +158,13 @@ public class ReportDataAssembler {
             List<Kpi> kpiList = new ArrayList<>();
             for (SummaryMetric m : cur.metrics()) {
                 BigDecimal value = kpiValue(m);
+                // Sin baseline real en el previo (no hay snapshot) → delta null, NO el valor completo.
+                boolean hasBaseline = prevBaseline.contains(new PlatformMetricKey(platform, m.metric()));
                 SummaryMetric pm = prevMetrics.get(m.metric());
-                BigDecimal delta = pm == null ? null : clean(value.subtract(kpiValue(pm)));
+                BigDecimal delta = (hasBaseline && pm != null) ? clean(value.subtract(kpiValue(pm))) : null;
                 kpiList.add(new Kpi(m.metric(), m.displayName(), m.unit(), value, delta));
             }
-            ReachEvolution reach = reachEvolution(platform, cur, prev);
+            ReachEvolution reach = reachEvolution(platform, cur, prev, prevBaseline);
             result.add(new PlatformKpis(platform, kpiList, cur.engagementRate(), cur.followerGrowth(), reach));
         }
         return result;
@@ -169,7 +177,8 @@ public class ReportDataAssembler {
         return v == null ? BigDecimal.ZERO : v;
     }
 
-    private ReachEvolution reachEvolution(String platform, PlatformSummary cur, PlatformSummary prev) {
+    private ReachEvolution reachEvolution(String platform, PlatformSummary cur, PlatformSummary prev,
+                                          Set<PlatformMetricKey> prevBaseline) {
         String reachKey = ACCOUNT_REACH_KEY.get(platform);
         if (reachKey == null) {
             return null;
@@ -178,7 +187,9 @@ public class ReportDataAssembler {
         if (curReach == null) {
             return null;
         }
-        BigDecimal prevReach = prev == null ? null : metricTotal(prev, reachKey);
+        // Sin baseline real del alcance en el previo → previous/deltaPct null (no se inventa evolución).
+        boolean hasBaseline = prevBaseline.contains(new PlatformMetricKey(platform, reachKey));
+        BigDecimal prevReach = (prev == null || !hasBaseline) ? null : metricTotal(prev, reachKey);
         BigDecimal deltaPct = null;
         if (prevReach != null && prevReach.signum() != 0) {
             deltaPct = curReach.subtract(prevReach)
