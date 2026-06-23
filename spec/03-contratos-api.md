@@ -155,11 +155,12 @@ independiente. Límite v1: máx. 20 requests por batch (`400` si se excede).
 
 | Método | Ruta | Descripción |
 |---|---|---|
+| POST | `/clients/{clientId}/reports:preview` | vista previa: devuelve el `ReportData` (datos), sin archivo |
 | POST | `/clients/{clientId}/reports` | genera reporte (síncrono) → `201` + recurso |
 | GET | `/clients/{clientId}/reports/{reportId}` | metadatos del reporte |
 | GET | `/clients/{clientId}/reports/{reportId}/download` | descarga el archivo |
 
-Request:
+Request (de `:report` y de `:preview`, este último **sin `format`**):
 ```json
 { "reportType": "EXTENDED", "format": "PDF", "from": "2026-05-01", "to": "2026-05-31",
   "platforms": ["INSTAGRAM","TIKTOK"], "rankBy": "reach" }
@@ -167,6 +168,48 @@ Request:
 `reportType` ∈ `SUMMARY` \| `EXTENDED`. `format` ∈ `MARKDOWN` \| `PDF`. `rankBy` = métrica para
 ordenar destacadas. v1 síncrono. El recurso devuelve
 `{id, reportType, status, format, downloadUrl, createdAt}`.
+
+Errores comunes a ambos (validados al armar el `ReportData`, multi-tenant por `client_id`): cliente
+inexistente → `404`; rango inválido (`from > to`, faltantes) → `400`; `rankBy` desconocido → `422`.
+La generación es robusta: una falla inesperada al armar (p. ej. una miniatura cacheada cuyo objeto no
+está en storage) **nunca** sale como `500` crudo — se mapea a una `ApiException` controlada.
+
+### `POST /clients/{clientId}/reports:preview`
+
+Vista previa para la pantalla: devuelve el **`ReportData`** (los MISMOS números que usa el renderer
+del export) **sin generar ni persistir archivo**. El front usa `:preview` para la vista en pantalla y
+`POST /reports` para exportar el PDF/MD → preview y export salen del **mismo armado** y no divergen
+(SSOT). Request = el de arriba **sin `format`** (es sólo datos). Custom method `:` (Google AIP-136).
+
+Response (`200`) — `ReportData` serializado:
+```json
+{
+  "reportType": "EXTENDED", "format": null,
+  "client": { "id": 1, "name": "La Cabrera Asunción", "timezone": "America/Asuncion", "plan": "Pro" },
+  "period": { "from": "2026-05-01", "to": "2026-05-31", "previousFrom": "2026-03-31", "previousTo": "2026-04-30" },
+  "platforms": ["FACEBOOK","INSTAGRAM"],
+  "rankBy": "reach",
+  "kpis": [ { "platform": "INSTAGRAM",
+              "metrics": [ { "key": "ig_reach", "displayName": "Alcance", "unit": "count",
+                             "value": 125400, "delta": 4200 } ],
+              "engagementRate": 0.074, "followerGrowth": 180,
+              "reach": { "current": 125400, "previous": 121200, "deltaPct": 3.5 } } ],
+  "topPosts": [ { "id": 42, "platform": "INSTAGRAM", "postType": "REEL", "displayType": "Reels",
+                  "publishedAt": "2026-05-20T13:00:00Z", "publishedAtLocal": "20 may 2026",
+                  "permalink": "https://…", "caption": "…",
+                  "thumbnailDataUri": "data:image/jpeg;base64,…", "thumbnailUrl": "https://…",
+                  "story": false, "metricKey": "ig_post_reach", "metricName": "Alcance", "metricValue": 42000 } ],
+  "postGroups": [ { "platform": "INSTAGRAM", "displayType": "Reels", "posts": [ /* ReportPost[] */ ] } ],
+  "storyGroups": [],
+  "postHighlights": { "top": [ /* ReportPost[] */ ], "bottom": [ /* ReportPost[] */ ] },
+  "storyHighlights": { "top": [], "bottom": [] },
+  "narrativeMd": null
+}
+```
+`format` es `null` (la vista no exporta). En `SUMMARY` sólo se llena `topPosts`+`kpis`; en `EXTENDED`
+además `postGroups`/`storyGroups`/`postHighlights`/`storyHighlights`. **Rango sin datos → estructura
+vacía amable** (`kpis` por red con métricas en cero, `topPosts`/grupos vacíos), NO un error. No
+inventa cifras: dato faltante = `null`. `:preview` no persiste fila ni archivo.
 
 ---
 

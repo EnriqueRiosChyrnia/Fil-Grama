@@ -142,6 +142,19 @@ class ReportFlowIntegrationTest {
         asset.setCapturedAt(Instant.now());
         mediaAssets.save(asset);
 
+        // Miniatura "fantasma": fila en media_assets SIN bytes en storage — exactamente lo que hace el
+        // seed demo (inserta la fila pero nunca sube el binario). Al armar el reporte la lectura del
+        // objeto falla; debe resolverse al remoto sin romper la generación (regresión del 500 crudo).
+        MediaAsset ghost = new MediaAsset();
+        ghost.setPostId(feedA);
+        ghost.setClientId(clientId);
+        ghost.setKind(MediaKind.THUMBNAIL);
+        ghost.setStoragePath("clients/%d/posts/%d/missing.png".formatted(clientId, feedA));
+        ghost.setContentType("image/png");
+        ghost.setBytes(123);
+        ghost.setCapturedAt(Instant.now());
+        mediaAssets.save(ghost);
+
         seeded = true;
     }
 
@@ -199,6 +212,12 @@ class ReportFlowIntegrationTest {
                 { "reportType":"%s", "format":"%s", "from":"2026-05-01", "to":"2026-05-31",
                   "platforms":["INSTAGRAM"], "rankBy":"reach" }
                 """.formatted(reportType, format);
+    }
+
+    private String previewBody(String reportType, String from, String to) {
+        return """
+                { "reportType":"%s", "from":"%s", "to":"%s", "platforms":["INSTAGRAM"], "rankBy":"reach" }
+                """.formatted(reportType, from, to);
     }
 
     @Test
@@ -283,6 +302,117 @@ class ReportFlowIntegrationTest {
         mvc.perform(post("/api/v1/clients/{c}/reports", clientId)
                         .contentType(MediaType.APPLICATION_JSON).content(body("SUMMARY", "MARKDOWN")))
                 .andExpect(status().isUnauthorized());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // :preview — vista en pantalla = export (mismo ReportData, sin generar ni persistir archivo)
+    // ---------------------------------------------------------------------------------------------
+
+    @Test
+    void previewReturnsReportDataJsonAndPersistsNothing() throws Exception {
+        long reportsBefore = reports.count();
+
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(previewBody("SUMMARY", "2026-05-01", "2026-05-31")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportType").value("SUMMARY"))
+                .andExpect(jsonPath("$.client.name").value("Molinos del Sur"))
+                .andExpect(jsonPath("$.period.from").value("2026-05-01"))
+                .andExpect(jsonPath("$.period.to").value("2026-05-31"))
+                .andExpect(jsonPath("$.platforms[0]").value("INSTAGRAM"))
+                .andExpect(jsonPath("$.kpis[0].platform").value("INSTAGRAM"))
+                .andExpect(jsonPath("$.topPosts").isArray())
+                .andExpect(jsonPath("$.topPosts[0].metricKey").value("ig_post_reach"));
+
+        // Vista previa NO persiste: sin fila de reporte ni archivo.
+        assertThat(reports.count()).isEqualTo(reportsBefore);
+    }
+
+    @Test
+    void previewEmptyRangeReturnsFriendlyEmptyStructureNotError() throws Exception {
+        // Rango muy anterior a los datos: estructura válida y vacía, NUNCA un error.
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(previewBody("SUMMARY", "2020-01-01", "2020-01-31")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportType").value("SUMMARY"))
+                .andExpect(jsonPath("$.platforms[0]").value("INSTAGRAM"))
+                .andExpect(jsonPath("$.topPosts").isEmpty());
+    }
+
+    @Test
+    void previewInvalidRangeIsBadRequest() throws Exception {
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(previewBody("SUMMARY", "2026-05-31", "2026-05-01")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void previewUnknownRankByIsUnprocessable() throws Exception {
+        String badRank = """
+                { "reportType":"SUMMARY", "from":"2026-05-01", "to":"2026-05-31",
+                  "platforms":["INSTAGRAM"], "rankBy":"bogus_metric" }
+                """;
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON).content(badRank))
+                .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void previewMissingClientIsNotFound() throws Exception {
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", 999_999)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(previewBody("SUMMARY", "2026-05-01", "2026-05-31")))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void previewUnauthenticatedIsRejected() throws Exception {
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(previewBody("SUMMARY", "2026-05-01", "2026-05-31")))
+                .andExpect(status().isUnauthorized());
+    }
+
+    /** Caso que rompía: un post con miniatura cacheada cuyo objeto NO está en storage → sin 500. */
+    @Test
+    void generateAndPreviewSurviveMissingCachedThumbnail() throws Exception {
+        // EXTENDED renderiza TODOS los posts (incluido feedA, con la miniatura "fantasma" del seed).
+        mvc.perform(post("/api/v1/clients/{c}/reports", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON).content(body("EXTENDED", "PDF")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "reportType":"EXTENDED", "from":"2026-05-01", "to":"2026-05-31",
+                                  "platforms":["INSTAGRAM"], "rankBy":"reach" }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.postGroups").isArray());
+    }
+
+    /** /v3/api-docs (fuente del codegen orval del front) debe exponer el path y los schemas de :preview. */
+    @Test
+    void openApiDocsExposePreviewEndpointAndReportDataSchema() throws Exception {
+        MvcResult docs = mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn();
+        String json = docs.getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(json)
+                .contains("/api/v1/clients/{clientId}/reports:preview")
+                .contains("PreviewReportRequest")
+                .contains("ReportData");
     }
 
     private static long idFrom(MvcResult result) throws Exception {

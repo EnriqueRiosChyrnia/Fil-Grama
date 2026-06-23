@@ -12,13 +12,13 @@ import com.filgrama.storage.StorageProperties;
 import com.filgrama.storage.StoredObject;
 
 import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
@@ -26,6 +26,12 @@ import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignReques
  * Adapter S3-compatible (MinIO local / Cloudflare R2 prod). El {@code storage_path} que persiste
  * es la <b>key</b> del objeto (ej. {@code clients/{id}/posts/{id}/thumb-...jpg}); el bucket sale
  * de config, no de la ruta. Activo cuando {@code storage.backend=s3}.
+ *
+ * <p>Traduce <b>cualquier</b> error del SDK a {@link StorageException} capturando la base
+ * {@link SdkException}: no sólo los de servicio ({@code S3Exception}, p. ej. {@code NoSuchKey}) sino
+ * también los de cliente ({@code SdkClientException}, p. ej. MinIO inalcanzable / timeout). Así el
+ * llamador nunca recibe una excepción cruda del SDK que escape sin mapear (un {@code SdkClientException}
+ * filtrado terminaba en un 500 al resolver una miniatura del reporte).
  */
 @Component
 @ConditionalOnProperty(prefix = "storage", name = "backend", havingValue = "s3")
@@ -51,7 +57,7 @@ public class S3StorageAdapter implements StoragePort {
                             .build(),
                     RequestBody.fromBytes(content));
             return new StoredObject(key, content, contentType);
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("S3 put falló para key '%s'".formatted(key), e);
         }
     }
@@ -62,7 +68,7 @@ public class S3StorageAdapter implements StoragePort {
             ResponseBytes<GetObjectResponse> bytes = s3.getObjectAsBytes(
                     GetObjectRequest.builder().bucket(bucket).key(storagePath).build());
             return bytes.asByteArray();
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("S3 get falló para key '%s'".formatted(storagePath), e);
         }
     }
@@ -71,7 +77,7 @@ public class S3StorageAdapter implements StoragePort {
     public void delete(String storagePath) {
         try {
             s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(storagePath).build());
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("S3 delete falló para key '%s'".formatted(storagePath), e);
         }
     }
@@ -85,7 +91,7 @@ public class S3StorageAdapter implements StoragePort {
                     .getObjectRequest(get)
                     .build();
             return Optional.of(presigner.presignGetObject(presign).url().toString());
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("S3 presign falló para key '%s'".formatted(storagePath), e);
         }
     }

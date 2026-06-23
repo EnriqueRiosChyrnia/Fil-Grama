@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 import com.filgrama.domain.MediaAsset;
 import com.filgrama.domain.enums.MediaKind;
 import com.filgrama.repository.MediaAssetRepository;
-import com.filgrama.storage.StorageException;
 import com.filgrama.storage.StoragePort;
 
 import lombok.extern.slf4j.Slf4j;
@@ -77,9 +76,12 @@ public class ThumbnailLoader {
             String contentType = asset.getContentType() == null || asset.getContentType().isBlank()
                     ? DEFAULT_CONTENT_TYPE : asset.getContentType();
             return "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
-        } catch (StorageException e) {
-            // El binario puede haberse purgado: caemos al remoto sin romper el reporte.
-            log.warn("No se pudo leer la miniatura {} del storage: {}", asset.getStoragePath(), e.getMessage());
+        } catch (RuntimeException e) {
+            // La miniatura es accesoria: ante CUALQUIER fallo de storage (objeto purgado →
+            // StorageException, o backend caído → otra RuntimeException sin mapear) caemos al remoto
+            // sin romper el reporte. assemble() corre antes del try/catch del service: si esto se
+            // propagara, terminaría en un 500 crudo.
+            log.warn("No se pudo leer la miniatura {} del storage: {}", asset.getStoragePath(), e.toString());
             return null;
         }
     }

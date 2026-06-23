@@ -1,5 +1,8 @@
 package com.filgrama.reports;
 
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 
 import com.filgrama.error.ApiException;
@@ -8,6 +11,7 @@ import com.filgrama.reports.data.ReportDataAssembler;
 import com.filgrama.reports.render.MarkdownRenderer;
 import com.filgrama.reports.render.PdfRenderer;
 import com.filgrama.reports.web.GenerateReportRequest;
+import com.filgrama.reports.web.PreviewReportRequest;
 import com.filgrama.storage.StorageException;
 import com.filgrama.storage.StoragePort;
 import com.filgrama.storage.StoredObject;
@@ -54,7 +58,7 @@ public class ReportService {
      * la fila — así un pedido inválido no deja un reporte fantasma.
      */
     public Report generate(Long clientId, GenerateReportRequest request, Long userId) {
-        ReportData data = assembler.assemble(clientId, request.reportType(), request.format(),
+        ReportData data = buildReportData(clientId, request.reportType(), request.format(),
                 request.from(), request.to(), request.platforms(), request.rankBy());
 
         Report report = new Report();
@@ -85,6 +89,37 @@ public class ReportService {
             }
             throw ApiException.unprocessable("No se pudo generar el reporte");
         }
+    }
+
+    /**
+     * Arma el {@link ReportData} (CU5) tolerando que {@code assemble} corra ANTES del try/catch de la
+     * generación: las validaciones de negocio ({@link ApiException} 404 cliente / 400 rango / 422
+     * {@code rankBy}) se propagan tal cual, pero <b>cualquier otra</b> {@code RuntimeException}
+     * inesperada (p. ej. storage caído al resolver una miniatura) se mapea a una {@link ApiException}
+     * controlada en vez de filtrarse como 500 crudo. Punto único reusado por {@link #generate} y por
+     * la vista previa ({@code :preview}) → ambos salen del MISMO armado, sin divergencias.
+     */
+    public ReportData buildReportData(Long clientId, ReportType reportType, ReportFormat format,
+                                      LocalDate from, LocalDate to, List<String> platforms, String rankBy) {
+        try {
+            return assembler.assemble(clientId, reportType, format, from, to, platforms, rankBy);
+        } catch (ApiException e) {
+            throw e; // 404/400/422 de validación: contrato, pasan sin tocar.
+        } catch (RuntimeException e) {
+            log.warn("No se pudo armar el ReportData del cliente {}: {}", clientId, e.toString());
+            throw ApiException.unprocessable("No se pudo armar el reporte para el cliente %d".formatted(clientId));
+        }
+    }
+
+    /**
+     * Vista previa: arma y devuelve el {@link ReportData} (mismos números que el export) <b>sin</b>
+     * renderizar, guardar archivo ni persistir fila. {@code format} no aplica (no hay export) → null.
+     * Mismas validaciones que {@link #generate} (cliente 404, rango 400, {@code rankBy} 422) porque
+     * reusa el MISMO {@link #buildReportData}; rango sin datos → estructura vacía amable (no error).
+     */
+    public ReportData preview(Long clientId, PreviewReportRequest request) {
+        return buildReportData(clientId, request.reportType(), null,
+                request.from(), request.to(), request.platforms(), request.rankBy());
     }
 
     /** Metadatos del reporte del cliente (404 si no existe o es de otro cliente). */

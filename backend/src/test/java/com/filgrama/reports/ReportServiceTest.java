@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -27,6 +28,7 @@ import com.filgrama.reports.data.ReportDataAssembler;
 import com.filgrama.reports.render.MarkdownRenderer;
 import com.filgrama.reports.render.PdfRenderer;
 import com.filgrama.reports.web.GenerateReportRequest;
+import com.filgrama.reports.web.PreviewReportRequest;
 import com.filgrama.storage.StoragePort;
 import com.filgrama.storage.StoredObject;
 
@@ -111,6 +113,81 @@ class ReportServiceTest {
         verify(repo, org.mockito.Mockito.atLeast(2)).save(saved.capture());
         assertThat(saved.getValue().getStatus()).isEqualTo(ReportStatus.FAILED);
         verify(storage, never()).put(anyString(), any(), anyString());
+    }
+
+    @Test
+    void assembleRuntimeFailureIsMappedToApiExceptionNeverRaw500() {
+        // assemble() corre ANTES del try/catch: una RuntimeException que NO sea ApiException (p. ej.
+        // storage caído al resolver una miniatura) escapaba como 500 crudo. Debe mapear a ApiException.
+        GenerateReportRequest req = new GenerateReportRequest(
+                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("MinIO unreachable: Connection refused"));
+
+        assertThatThrownBy(() -> service.generate(CLIENT, req, 3L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus().value()).isEqualTo(422));
+
+        // No deja un reporte fantasma: si no se pudo armar el ReportData, no se persiste fila.
+        verify(repo, never()).save(any(Report.class));
+    }
+
+    @Test
+    void assembleApiExceptionIsPropagatedUnchanged() {
+        // Las validaciones de assemble (404 cliente, 400 rango, 422 rankBy) deben pasar tal cual.
+        GenerateReportRequest req = new GenerateReportRequest(
+                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(ApiException.notFound("Client %d not found".formatted(CLIENT)));
+
+        assertThatThrownBy(() -> service.generate(CLIENT, req, 3L))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus().value()).isEqualTo(404));
+
+        verify(repo, never()).save(any(Report.class));
+    }
+
+    // ---- :preview (vista en pantalla = export: mismo ReportData, sin archivo) ----
+
+    @Test
+    void previewReturnsAssembledDataWithoutPersisting() {
+        PreviewReportRequest req = new PreviewReportRequest(
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
+        ReportData expected = data(ReportType.SUMMARY, null);
+        // preview no exporta: no hay format. assemble se invoca con format == null.
+        when(assembler.assemble(eq(CLIENT), eq(ReportType.SUMMARY), isNull(),
+                eq(FROM), eq(TO), any(), eq("reach"))).thenReturn(expected);
+
+        ReportData result = service.preview(CLIENT, req);
+
+        assertThat(result).isSameAs(expected);
+        verify(repo, never()).save(any(Report.class)); // no persiste fila ni archivo
+        verify(markdown, never()).render(any());
+        verify(pdf, never()).render(any());
+    }
+
+    @Test
+    void previewPropagatesValidationApiException() {
+        PreviewReportRequest req = new PreviewReportRequest(
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(ApiException.notFound("Client %d not found".formatted(CLIENT)));
+
+        assertThatThrownBy(() -> service.preview(CLIENT, req))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus().value()).isEqualTo(404));
+    }
+
+    @Test
+    void previewMapsUnexpectedFailureToApiExceptionNeverRaw500() {
+        PreviewReportRequest req = new PreviewReportRequest(
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("MinIO unreachable"));
+
+        assertThatThrownBy(() -> service.preview(CLIENT, req))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus().value()).isEqualTo(422));
     }
 
     @Test
