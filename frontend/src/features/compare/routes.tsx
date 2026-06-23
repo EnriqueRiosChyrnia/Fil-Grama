@@ -1,12 +1,14 @@
 import type { AppRoute } from '../../routes/types';
 
 /**
- * Rutas del track Comparar (FC). El router central las agrega solo por glob
- * (no se toca routes/router.tsx). HANDOFF §8/§11.
+ * Pestaña "Comparar" del workspace de cliente (HANDOFF §8/§11). El layout con
+ * pestañas vive en `features/clients/ClientWorkspace`; acá sólo declaramos la
+ * página con su path RELATIVO al padre `clients/:clientId`. `clients/routes.tsx`
+ * la anida bajo el <Outlet/>. (Sin `routes`: el registry no la agrega como raíz.)
  */
-export const routes: AppRoute[] = [
+export const clientRoutes: AppRoute[] = [
   {
-    path: 'clients/:clientId/compare',
+    path: 'compare',
     lazy: async () => ({ Component: (await import('./CompareAccountsPage')).CompareAccountsPage }),
   },
 ];

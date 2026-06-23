@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
-  useGetClientsId,
   useGetClientsClientIdAccounts,
   useGetClientsClientIdSummary,
 } from '../../api/generated/endpoints';
@@ -18,11 +17,19 @@ import {
   type NetworkAccountValue,
   type AccountLike,
 } from '../../components/ui';
-import { EmptyState, ErrorState, LoadingState, Skeleton } from '../../components/layout';
+import { EmptyState, ErrorState, LoadingState } from '../../components/layout';
 import { useCatalog, CONCEPT_BY_KEY } from '../../lib/catalog';
 import { primaryMetricKey } from '../../lib/metrics';
 import { computeRange, formatByUnit, type RangeDays } from '../../lib/format';
 import { heroFromSummary } from './clientMetrics';
+import { StatusPill } from './clientBits';
+
+/**
+ * Dashboard de cliente (pestaña Dashboard del workspace). El encabezado de cliente
+ * (nombre, chips de redes, breadcrumb) y las pestañas los provee ClientWorkspace;
+ * acá va sólo el CUERPO: controles + KPIs + tendencia + cuentas conectadas
+ * (clickeables → detalle de cuenta).
+ */
 
 function ClockIcon() {
   return (
@@ -31,15 +38,6 @@ function ClockIcon() {
       <path d="M12 9.5V13l2.4 1.6" stroke="var(--fg-primary)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M9 3.5h6" stroke="var(--fg-primary)" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
-  );
-}
-
-function Breadcrumb() {
-  return (
-    <Link to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--fg-text-tertiary)' }}>
-      <span style={{ fontSize: 15 }}>‹</span>
-      <span>Clientes</span>
-    </Link>
   );
 }
 
@@ -53,7 +51,6 @@ export function ClientDashboardPage() {
   const [sel, setSel] = useState<NetworkAccountValue>({ platform: 'ALL', accountId: 'ALL' });
   const dr = useMemo(() => computeRange(range), [range]);
 
-  const detailQ = useGetClientsId(id, { query: { enabled: Number.isFinite(id) } });
   const accountsQ = useGetClientsClientIdAccounts(id, { query: { enabled: Number.isFinite(id) } });
   const summaryQ = useGetClientsClientIdSummary(
     id,
@@ -61,7 +58,6 @@ export function ClientDashboardPage() {
     { query: { enabled: Number.isFinite(id) } },
   );
 
-  const detail = detailQ.data?.data;
   const accounts: AccountResponse[] = accountsQ.data?.data ?? [];
   const summary = summaryQ.data?.data;
 
@@ -79,83 +75,29 @@ export function ClientDashboardPage() {
   );
 
   // Tendencia: cuenta primaria (la seleccionada o la primera conectada) + métrica del catálogo.
-  const primary =
-    sel.accountId !== 'ALL' ? accounts.find((a) => a.id === sel.accountId) : connected[0];
+  const primary = sel.accountId !== 'ALL' ? accounts.find((a) => a.id === sel.accountId) : connected[0];
   const trendMetric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
-  const trendQ = useAccountReport(
-    primary?.id ?? 0,
-    trendMetric ? [trendMetric] : [],
-    dr,
-    { enabled: !!primary?.id && !!trendMetric && hasData },
-  );
+  const trendQ = useAccountReport(primary?.id ?? 0, trendMetric ? [trendMetric] : [], dr, {
+    enabled: !!primary?.id && !!trendMetric && hasData,
+  });
   const trendPoints = pointsForMetric(trendQ.data?.data, trendMetric).map((p) => ({ x: p.date ?? '', value: p.value ?? 0 }));
 
-  if (detailQ.isLoading) {
+  if (accountsQ.isLoading) {
     return (
-      <div>
-        <Breadcrumb />
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginTop: 14 }}>
-          <Skeleton width={48} height={48} radius={11} />
-          <Skeleton width={200} height={20} />
-        </div>
-        <Card style={{ marginTop: 18 }} padding={22}>
-          <LoadingState message="Cargando el dashboard…" />
-        </Card>
-      </div>
+      <Card padding={22}>
+        <LoadingState message="Cargando el dashboard…" />
+      </Card>
     );
   }
-  if (detailQ.isError) {
-    return (
-      <div>
-        <Breadcrumb />
-        <ErrorState error={detailQ.error} onRetry={() => detailQ.refetch()} />
-      </div>
-    );
+  if (accountsQ.isError) {
+    return <ErrorState error={accountsQ.error} onRetry={() => accountsQ.refetch()} />;
   }
-
-  const canReport = hasData;
 
   return (
     <div>
-      <Breadcrumb />
-
-      {/* client header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginTop: 14, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 11, background: 'var(--fg-blue-50)', color: 'var(--fg-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17, fontWeight: 600 }}>
-            {(detail?.name ?? '?').slice(0, 2).toUpperCase()}
-          </div>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--fg-text-primary)', letterSpacing: '-.3px', margin: 0 }}>
-              {detail?.name}
-            </h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
-              {accounts.length === 0 ? (
-                <span style={{ fontSize: 12, color: 'var(--fg-text-tertiary)' }}>Sin redes conectadas</span>
-              ) : (
-                Array.from(new Set(accounts.map((a) => a.platform))).map((p) => <NetworkChip key={p} platform={p} long />)
-              )}
-            </div>
-          </div>
-        </div>
-        <Button
-          disabled={!canReport}
-          onClick={() => navigate(`/clients/${id}/report`)}
-          title={canReport ? undefined : 'Disponible cuando haya datos'}
-          leftIcon={
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-              <path d="M3 1.5h6l3 3v9H3z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-              <path d="M9 1.5v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-            </svg>
-          }
-        >
-          Generar reporte
-        </Button>
-      </div>
-
       {/* controls */}
       {accounts.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, marginTop: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
           <NetworkAccountSelect accounts={accountItems} value={sel} onChange={setSel} />
           <DateRangeControl value={range} onChange={setRange} />
         </div>
@@ -183,7 +125,7 @@ export function ClientDashboardPage() {
             description="Perdimos el acceso a todas sus cuentas, así que no podemos capturar métricas. Es un problema de conexión, no de datos. Reconectá las cuentas para reanudar la captura."
             action={<Button onClick={() => navigate(`/clients/${id}/reconnect`)}>Ir a reconexión</Button>}
           >
-            <AccountList accounts={accounts} />
+            <AccountList accounts={accounts} clientId={id} />
           </EmptyState>
         ) : !hasData ? (
           <EmptyState
@@ -191,62 +133,80 @@ export function ClientDashboardPage() {
             title="Conectamos las cuentas. Estamos juntando los primeros datos."
             description="Las primeras métricas aparecen tras la próxima captura diaria. No tenés que hacer nada: el job corre solo, una vez al día por cuenta."
           >
-            <AccountList accounts={accounts} />
+            <AccountList accounts={accounts} clientId={id} />
             <div style={{ fontSize: 12.5, color: 'var(--fg-text-tertiary)', marginTop: 14 }}>
               Mientras tanto podés revisar otros clientes; te avisamos cuando lleguen los primeros datos.
             </div>
           </EmptyState>
         ) : (
-          <Dashboard
-            summary={summary}
-            trendPoints={trendPoints}
-            trendLoading={trendQ.isLoading}
-            trendMetricLabel={catalog.displayName(trendMetric)}
-            rangeLabel={dr.label}
-          />
+          <>
+            <Dashboard
+              summary={summary}
+              trendPoints={trendPoints}
+              trendLoading={trendQ.isLoading}
+              trendMetricLabel={catalog.displayName(trendMetric)}
+              rangeLabel={dr.label}
+            />
+            <div style={{ marginTop: 16 }}>
+              <AccountList accounts={accounts} clientId={id} />
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-/** Lista "Cuentas conectadas" para los estados vacíos. */
-function AccountList({ accounts }: { accounts: AccountResponse[] }) {
+/**
+ * Lista "Cuentas conectadas". CLICKEABLE: cada fila entra al detalle de la cuenta
+ * (`clients/:id/accounts/:accountId`). Antes la lista no llevaba a ningún lado;
+ * ahora es la entrada al drill-down de cuenta (fix de navegación del dashboard).
+ */
+function AccountList({ accounts, clientId }: { accounts: AccountResponse[]; clientId: number }) {
+  const navigate = useNavigate();
   return (
-    <div style={{ width: '100%', maxWidth: 580, border: '1px solid var(--fg-border)', borderRadius: 12, marginTop: 24, overflow: 'hidden', textAlign: 'left' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid #F0F3F7', background: '#FBFCFD' }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-text-secondary)', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-          Cuentas conectadas
+    <div style={{ width: '100%', border: '1px solid var(--fg-border)', borderRadius: 12, overflow: 'hidden', textAlign: 'left' }}>
+      <style>{`.fg-acctrow:hover{background:var(--fg-bg-muted)}`}</style>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '13px 16px', borderBottom: '1px solid var(--fg-border)' }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--fg-text-primary)' }}>Cuentas conectadas</span>
+        <span style={{ fontSize: 12, color: 'var(--fg-text-tertiary)' }}>
+          {accounts.length} {accounts.length === 1 ? 'cuenta' : 'cuentas'} · tocá una para ver su detalle
         </span>
-        <span style={{ fontSize: 12, color: 'var(--fg-text-tertiary)' }}>{accounts.length}</span>
       </div>
-      {accounts.map((a) => {
-        const st = (a.status ?? '').toUpperCase();
-        const ok = st === 'CONNECTED';
-        return (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '12px 16px', borderBottom: '1px solid #F4F6F9' }}>
-            <NetworkChip platform={a.platform} />
-            <span style={{ fontSize: 13, color: 'var(--fg-text-primary)' }}>{a.handle || a.displayName || `Cuenta ${a.id}`}</span>
-            <span
-              style={{
-                marginLeft: 'auto',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 7,
-                background: ok ? 'var(--fg-success-bg)' : 'var(--fg-danger-bg)',
-                color: ok ? 'var(--fg-success-fg)' : 'var(--fg-danger-fg)',
-                borderRadius: 7,
-                padding: '4px 10px',
-                fontSize: 12,
-                fontWeight: 500,
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-              {ok ? 'Conectada' : 'Sin conexión'}
+      {accounts.map((a) => (
+        <button
+          key={a.id}
+          type="button"
+          className="fg-acctrow"
+          onClick={() => navigate(`/clients/${clientId}/accounts/${a.id}`)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 11,
+            width: '100%',
+            padding: '13px 16px',
+            borderTop: '1px solid var(--fg-border)',
+            borderLeft: 'none',
+            borderRight: 'none',
+            borderBottom: 'none',
+            background: 'var(--fg-bg-surface)',
+            cursor: 'pointer',
+            textAlign: 'left',
+            transition: 'background .12s',
+          }}
+        >
+          <NetworkChip platform={a.platform} />
+          <span style={{ fontSize: 13, color: 'var(--fg-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {a.handle || a.displayName || `Cuenta ${a.id}`}
+          </span>
+          <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <StatusPill status={a.status} />
+            <span style={{ fontSize: 17, color: 'var(--fg-text-tertiary)' }} aria-hidden>
+              ›
             </span>
-          </div>
-        );
-      })}
+          </span>
+        </button>
+      ))}
     </div>
   );
 }
