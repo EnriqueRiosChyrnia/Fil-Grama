@@ -2,9 +2,10 @@
  * Lógica de "Comparar cuentas" (HANDOFF §11, territorio FC). Compara cuentas
  * INDIVIDUALES (hasta 4, incluso varias de la misma red), nunca agregado por red.
  *
- * Fuente: `/accounts/{id}/metrics` por cuenta+concepto (totales del rango). El
- * mapeo concepto→métrica y la comparabilidad viven en `lib/metrics` (frozen); acá
- * sólo la agregación de la serie y el armado de filas/columnas.
+ * Fuente: `POST /accounts/{id}/metrics:report` (una request por cuenta con sus
+ * métricas crudas; serie por métrica). El mapeo concepto→métrica y la
+ * comparabilidad viven en `lib/metrics` (frozen); acá sólo la agregación de la
+ * serie y el armado de filas/columnas.
  *
  * Engagement no tiene key cruda en el catálogo (es un % derivado). Como `/summary`
  * agrega por RED y no por cuenta, no hay fuente per-cuenta para el engagement; lo

@@ -4,6 +4,12 @@ import { defineConfig } from 'orval';
  * Codegen del cliente del backend (decisión cerrada PLAN §1): tipos + hooks de
  * React Query desde la spec OpenAPI de springdoc.
  *
+ * Anti-drift: `api/generated/*` se commitea al repo y `npm run codegen:check`
+ * regenera + `git diff --exit-code` (falla si el cliente quedó desactualizado vs
+ * el backend). TODO(CI): enchufar `codegen:check` en el pipeline. Necesita el
+ * OpenAPI del backend disponible — o levantar el backend (`:8080`), o publicar el
+ * `v3/api-docs` como artefacto/archivo y apuntar `input.target` a él en CI.
+ *
  * NOTA: los operationId del backend son genéricos (list, list_1, create...), así
  * que derivamos nombres de hook estables desde verbo + ruta. Convención:
  *   GET  /api/v1/clients              -> useGetClients

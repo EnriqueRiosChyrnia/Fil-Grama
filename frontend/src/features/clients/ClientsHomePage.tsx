@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueries } from '@tanstack/react-query';
 import {
   useGetClients,
   useGetClientsClientIdSummary,
-  useGetClientsClientIdAccounts,
-  useGetAccountsIdMetrics,
+  getGetClientsClientIdAccountsQueryOptions,
   useGetMePriorityClients,
 } from '../../api/generated/endpoints';
-import type { ClientResponse } from '../../api/generated/model';
+import type { AccountReportRequest, ClientResponse } from '../../api/generated/model';
+import { useBatchAccountReports } from '../accounts/metricsReport';
 import {
   Button,
   Card,
@@ -36,8 +37,22 @@ function initials(name?: string): string {
     .toUpperCase();
 }
 
-/** Tarjeta de cliente: cada una resuelve su propio summary (hook por tarjeta). */
-function ClientCard({ client, concept, priority }: { client: ClientResponse; concept: CoreConcept; priority: boolean }) {
+/**
+ * Tarjeta de cliente: resuelve su propio summary (hero). La serie del sparkline
+ * llega ya resuelta vía `sparkValues` (la Home la trae para todas las cuentas en
+ * una sola `:batchReport`, no una request por tarjeta).
+ */
+function ClientCard({
+  client,
+  concept,
+  priority,
+  sparkValues,
+}: {
+  client: ClientResponse;
+  concept: CoreConcept;
+  priority: boolean;
+  sparkValues: number[];
+}) {
   const navigate = useNavigate();
   const summaryQ = useGetClientsClientIdSummary(client.id as number, { from: RANGE.from, to: RANGE.to });
   const summary = summaryQ.data?.data;
@@ -45,19 +60,6 @@ function ClientCard({ client, concept, priority }: { client: ClientResponse; con
   const hero = heroFromSummary(summary, concept);
   const networks = platformsFromSummary(summary);
   const meta = CONCEPT_BY_KEY[concept];
-
-  // Sparkline: serie de la cuenta primaria (sólo si el cliente tiene datos).
-  const hasHero = hero != null;
-  const accountsQ = useGetClientsClientIdAccounts(client.id as number, { query: { enabled: hasHero } });
-  const accountsList = accountsQ.data?.data ?? [];
-  const primary = accountsList.find((a) => (a.status ?? '').toUpperCase() === 'CONNECTED') ?? accountsList[0];
-  const sparkMetric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
-  const seriesQ = useGetAccountsIdMetrics(
-    primary?.id ?? 0,
-    { metric: sparkMetric ?? '', from: RANGE.from, to: RANGE.to, granularity: 'day' },
-    { query: { enabled: hasHero && !!primary?.id && !!sparkMetric } },
-  );
-  const sparkValues = (seriesQ.data?.data?.points ?? []).map((p) => p.value ?? 0);
 
   return (
     <Card interactive onClick={() => navigate(`/clients/${client.id}`)} style={{ display: 'flex', flexDirection: 'column', gap: 13, minHeight: 168 }}>
@@ -151,6 +153,29 @@ export function ClientsHomePage() {
       .filter((c) => (filter === 'prioritarios' ? priorityIds.has(c.id) : true))
       .filter((c) => (q ? (c.name ?? '').toLowerCase().includes(q) : true));
   }, [clients, filter, priorityIds, search]);
+
+  // Cuentas de cada cliente visible (para elegir la cuenta primaria del sparkline).
+  const accountsResults = useQueries({
+    queries: visible.map((c) => getGetClientsClientIdAccountsQueryOptions(c.id as number)),
+  });
+
+  // clientId → cuenta primaria + su métrica de sparkline ('alcance' de la red).
+  const primaryByClient = new Map<number, { accountId: number; metric: string }>();
+  visible.forEach((c, i) => {
+    const list = accountsResults[i]?.data?.data ?? [];
+    const primary = list.find((a) => (a.status ?? '').toUpperCase() === 'CONNECTED') ?? list[0];
+    const metric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
+    if (primary?.id != null && metric) primaryByClient.set(c.id as number, { accountId: primary.id, metric });
+  });
+
+  // UNA :batchReport para todas las cuentas primarias (en vez de N+1: una por tarjeta).
+  const sparkRequests: AccountReportRequest[] = [...primaryByClient.values()].map((p) => ({
+    accountId: p.accountId,
+    metrics: [p.metric],
+    dateRange: { from: RANGE.from, to: RANGE.to },
+    granularity: 'day',
+  }));
+  const { byAccount: sparkByAccount } = useBatchAccountReports(sparkRequests);
 
   const onConcept = (c: CoreConcept) => {
     setConcept(c);
@@ -259,9 +284,19 @@ export function ClientsHomePage() {
             />
           </div>
         ) : (
-          visible.map((c) => (
-            <ClientCard key={c.id} client={c} concept={concept} priority={priorityIds.has(c.id)} />
-          ))
+          visible.map((c) => {
+            const p = primaryByClient.get(c.id as number);
+            const sparkValues = p ? sparkByAccount.get(p.accountId) ?? [] : [];
+            return (
+              <ClientCard
+                key={c.id}
+                client={c}
+                concept={concept}
+                priority={priorityIds.has(c.id)}
+                sparkValues={sparkValues}
+              />
+            );
+          })
         )}
       </div>
     </div>

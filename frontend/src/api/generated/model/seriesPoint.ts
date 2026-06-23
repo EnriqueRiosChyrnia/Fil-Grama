@@ -6,6 +6,8 @@
  */
 
 export interface SeriesPoint {
-  capturedAt?: string;
+  /** Día de la observación (capture_date). v1: granularidad 'day'. */
+  date?: string;
+  /** Valor de la métrica en ese día. */
   value?: number;
 }

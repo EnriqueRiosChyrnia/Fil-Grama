@@ -4,9 +4,11 @@ import { useQueries } from '@tanstack/react-query';
 import {
   useGetClientsId,
   useGetClientsClientIdAccounts,
-  getGetAccountsIdMetricsQueryOptions,
+  postAccountsIdMetricsReport,
 } from '../../api/generated/endpoints';
-import type { AccountResponse } from '../../api/generated/model';
+import type { AccountReportResponse, AccountResponse } from '../../api/generated/model';
+import { qk } from '../../lib/query';
+import { pointsForMetric } from '../accounts/metricsReport';
 import {
   Card,
   SegmentedControl,
@@ -115,26 +117,41 @@ export function CompareAccountsPage() {
       return [...cur, accId];
     });
 
-  // Fan-out: una query por (cuenta, concepto con key cruda). useQueries soporta
-  // longitud variable (no rompe las reglas de hooks como un useQuery en bucle).
+  // Fan-out: UNA :report por cuenta con todas sus métricas crudas (antes era una
+  // query por cuenta+métrica). useQueries soporta longitud variable (no rompe las
+  // reglas de hooks como un useQuery en bucle).
   const items = buildMetricQueryItems(selectedAccounts);
+  const metricsByAccount = new Map<number, string[]>();
+  for (const it of items) {
+    const list = metricsByAccount.get(it.accountId) ?? [];
+    if (!list.includes(it.metric)) list.push(it.metric);
+    metricsByAccount.set(it.accountId, list);
+  }
+  const accountEntries = [...metricsByAccount.entries()];
   const results = useQueries({
-    queries: items.map((it) =>
-      getGetAccountsIdMetricsQueryOptions(it.accountId, {
-        metric: it.metric,
-        from: dr.from,
-        to: dr.to,
-        granularity: 'day',
-      }),
-    ),
+    queries: accountEntries.map(([accountId, metrics]) => ({
+      queryKey: qk.feature('accountReport', accountId, [...metrics].sort(), dr.from, dr.to, 'day'),
+      queryFn: ({ signal }: { signal?: AbortSignal }) =>
+        postAccountsIdMetricsReport(
+          accountId,
+          { metrics, dateRange: { from: dr.from, to: dr.to }, granularity: 'day' },
+          { signal },
+        ),
+      enabled: metrics.length > 0,
+    })),
+  });
+  const reportByAccount = new Map<number, AccountReportResponse>();
+  accountEntries.forEach(([accountId], i) => {
+    const rep = results[i]?.data?.data;
+    if (rep) reportByAccount.set(accountId, rep);
   });
 
   // totals[accountId][concept] (+ engagement derivado de alcance/interacciones).
   const totals: Totals = {};
-  items.forEach((it, i) => {
-    const points = results[i]?.data?.data?.points;
+  for (const it of items) {
+    const points = pointsForMetric(reportByAccount.get(it.accountId), it.metric);
     (totals[it.accountId] ??= {})[it.concept] = aggregateSeries(points, it.concept);
-  });
+  }
   for (const acc of selectedAccounts) {
     const row = (totals[acc.id] ??= {});
     row.engagement = deriveEngagement(row.alcance, row.interacciones);

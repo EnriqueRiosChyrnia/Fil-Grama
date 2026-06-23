@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useGetPostsIdMetrics } from '../../api/generated/endpoints';
 import type { PostListItem } from '../../api/generated/model';
+import { usePostReport, pointsForMetric } from '../accounts/metricsReport';
 import { Card, Button, NetworkChip, TrendChart, DateRangeControl, InfoTooltip } from '../../components/ui';
 import { ErrorState, LoadingState } from '../../components/layout';
 import { useCatalog } from '../../lib/catalog';
@@ -69,12 +69,13 @@ export function PostDetailPage() {
   );
   const activeMetric = metric ?? metricItems[0]?.key ?? null;
 
-  const seriesQ = useGetPostsIdMetrics(
+  const seriesQ = usePostReport(
     id,
-    { metric: activeMetric ?? '', from: dr.from, to: dr.to },
-    { query: { enabled: Number.isFinite(id) && !!activeMetric } },
+    activeMetric ? [activeMetric] : [],
+    dr,
+    { enabled: Number.isFinite(id) && !!activeMetric },
   );
-  const points = (seriesQ.data?.data?.points ?? []).map((p) => ({ x: p.capturedAt ?? '', value: p.value ?? 0 }));
+  const points = pointsForMetric(seriesQ.data?.data, activeMetric).map((p) => ({ x: p.date ?? '', value: p.value ?? 0 }));
 
   const back = () => {
     if (state?.clientId && state?.accountId) {

@@ -20,33 +20,34 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AccountReportResponse,
   AccountResponse,
-  AccountSeriesResponse,
+  BatchReportRequest,
+  BatchReportResponse,
   ClientDetailResponse,
   ClientResponse,
   ConnectResponse,
   CreateClientRequest,
   CreateUserRequest,
   GenerateReportRequest,
-  GetAccountsIdMetricsParams,
   GetAccountsIdPostsParams,
   GetClientsClientIdSummaryParams,
   GetClientsParams,
   GetHealth200,
   GetMetricsParams,
   GetOauthCallbackPlatformParams,
-  GetPostsIdMetricsParams,
   GetSyncRunsParams,
   GetUsersParams,
   LoginRequest,
   MetricCatalogItem,
+  MetricsReportRequest,
   PageResponseClientResponse,
   PageResponsePostListItem,
   PageResponseSyncRunResponse,
   PageResponseUserResponse,
   PostAuthLogin200,
   PostAuthRefresh200,
-  PostSeriesResponse,
+  PostReportResponse,
   PriorityClientRequest,
   RefreshRequest,
   ReportResource,
@@ -618,6 +619,241 @@ export function usePostSyncRun<TData = Awaited<ReturnType<typeof postSyncRun>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getPostSyncRunQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postPostsIdMetricsReportResponse200 = {
+  data: PostReportResponse
+  status: 200
+}
+
+export type postPostsIdMetricsReportResponseSuccess = (postPostsIdMetricsReportResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postPostsIdMetricsReportResponse = (postPostsIdMetricsReportResponseSuccess)
+
+export const getPostPostsIdMetricsReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/posts/${id}/metrics:report`
+}
+
+/**
+ * N métricas + rango en una request. Métrica inválida → 400; from>to → 400; rango sin datos → serie con points vacío; post inexistente → 404.
+ * @summary Informe de series de un post
+ */
+export const postPostsIdMetricsReport = async (id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: RequestInit): Promise<postPostsIdMetricsReportResponse> => {
+
+  return orvalFetch<postPostsIdMetricsReportResponse>(getPostPostsIdMetricsReportUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(metricsReportRequest)
+  }
+);}
+
+
+
+
+
+export const getPostPostsIdMetricsReportQueryKey = (id: number,
+    metricsReportRequest?: MetricsReportRequest,) => {
+    return [
+    'POST', `/api/v1/posts/${id}/metrics:report`, metricsReportRequest
+    ] as const;
+    }
+
+
+export const getPostPostsIdMetricsReportQueryOptions = <TData = Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError = unknown>(id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostPostsIdMetricsReportQueryKey(id,metricsReportRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postPostsIdMetricsReport>>> = ({ signal }) => postPostsIdMetricsReport(id,metricsReportRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostPostsIdMetricsReportQueryResult = NonNullable<Awaited<ReturnType<typeof postPostsIdMetricsReport>>>
+export type PostPostsIdMetricsReportQueryError = unknown
+
+
+export function usePostPostsIdMetricsReport<TData = Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest: undefined |  MetricsReportRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postPostsIdMetricsReport>>,
+          TError,
+          Awaited<ReturnType<typeof postPostsIdMetricsReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostPostsIdMetricsReport<TData = Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postPostsIdMetricsReport>>,
+          TError,
+          Awaited<ReturnType<typeof postPostsIdMetricsReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostPostsIdMetricsReport<TData = Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Informe de series de un post
+ */
+
+export function usePostPostsIdMetricsReport<TData = Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPostsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostPostsIdMetricsReportQueryOptions(id,metricsReportRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postMetricsBatchReportResponse200 = {
+  data: BatchReportResponse
+  status: 200
+}
+
+export type postMetricsBatchReportResponseSuccess = (postMetricsBatchReportResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postMetricsBatchReportResponse = (postMetricsBatchReportResponseSuccess)
+
+export const getPostMetricsBatchReportUrl = () => {
+
+
+
+
+  return `/api/v1/metrics:batchReport`
+}
+
+/**
+ * Hasta 20 informes en una request; la response conserva el orden de 'requests'. Atómico: cuenta inexistente → 404 de todo el batch; métrica inválida → 400; >20 requests → 400.
+ * @summary Batch de informes de cuenta
+ */
+export const postMetricsBatchReport = async (batchReportRequest?: BatchReportRequest, options?: RequestInit): Promise<postMetricsBatchReportResponse> => {
+
+  return orvalFetch<postMetricsBatchReportResponse>(getPostMetricsBatchReportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(batchReportRequest)
+  }
+);}
+
+
+
+
+
+export const getPostMetricsBatchReportQueryKey = (batchReportRequest?: BatchReportRequest,) => {
+    return [
+    'POST', `/api/v1/metrics:batchReport`, batchReportRequest
+    ] as const;
+    }
+
+
+export const getPostMetricsBatchReportQueryOptions = <TData = Awaited<ReturnType<typeof postMetricsBatchReport>>, TError = unknown>(batchReportRequest?: BatchReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostMetricsBatchReportQueryKey(batchReportRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postMetricsBatchReport>>> = ({ signal }) => postMetricsBatchReport(batchReportRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostMetricsBatchReportQueryResult = NonNullable<Awaited<ReturnType<typeof postMetricsBatchReport>>>
+export type PostMetricsBatchReportQueryError = unknown
+
+
+export function usePostMetricsBatchReport<TData = Awaited<ReturnType<typeof postMetricsBatchReport>>, TError = unknown>(
+ batchReportRequest: undefined |  BatchReportRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetricsBatchReport>>,
+          TError,
+          Awaited<ReturnType<typeof postMetricsBatchReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetricsBatchReport<TData = Awaited<ReturnType<typeof postMetricsBatchReport>>, TError = unknown>(
+ batchReportRequest?: BatchReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetricsBatchReport>>,
+          TError,
+          Awaited<ReturnType<typeof postMetricsBatchReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetricsBatchReport<TData = Awaited<ReturnType<typeof postMetricsBatchReport>>, TError = unknown>(
+ batchReportRequest?: BatchReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Batch de informes de cuenta
+ */
+
+export function usePostMetricsBatchReport<TData = Awaited<ReturnType<typeof postMetricsBatchReport>>, TError = unknown>(
+ batchReportRequest?: BatchReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetricsBatchReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostMetricsBatchReportQueryOptions(batchReportRequest,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -1615,6 +1851,127 @@ export function usePostAccountsIdRefreshToken<TData = Awaited<ReturnType<typeof 
 
 
 
+export type postAccountsIdMetricsReportResponse200 = {
+  data: AccountReportResponse
+  status: 200
+}
+
+export type postAccountsIdMetricsReportResponseSuccess = (postAccountsIdMetricsReportResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postAccountsIdMetricsReportResponse = (postAccountsIdMetricsReportResponseSuccess)
+
+export const getPostAccountsIdMetricsReportUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/accounts/${id}/metrics:report`
+}
+
+/**
+ * Patrón GA4 runReport: N métricas + rango en una request. Una serie por métrica. Métrica inválida → 400; from>to → 400; rango sin datos → serie con points vacío; cuenta inexistente → 404.
+ * @summary Informe de series de una cuenta
+ */
+export const postAccountsIdMetricsReport = async (id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: RequestInit): Promise<postAccountsIdMetricsReportResponse> => {
+
+  return orvalFetch<postAccountsIdMetricsReportResponse>(getPostAccountsIdMetricsReportUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(metricsReportRequest)
+  }
+);}
+
+
+
+
+
+export const getPostAccountsIdMetricsReportQueryKey = (id: number,
+    metricsReportRequest?: MetricsReportRequest,) => {
+    return [
+    'POST', `/api/v1/accounts/${id}/metrics:report`, metricsReportRequest
+    ] as const;
+    }
+
+
+export const getPostAccountsIdMetricsReportQueryOptions = <TData = Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError = unknown>(id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostAccountsIdMetricsReportQueryKey(id,metricsReportRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>> = ({ signal }) => postAccountsIdMetricsReport(id,metricsReportRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostAccountsIdMetricsReportQueryResult = NonNullable<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>>
+export type PostAccountsIdMetricsReportQueryError = unknown
+
+
+export function usePostAccountsIdMetricsReport<TData = Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest: undefined |  MetricsReportRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postAccountsIdMetricsReport>>,
+          TError,
+          Awaited<ReturnType<typeof postAccountsIdMetricsReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostAccountsIdMetricsReport<TData = Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postAccountsIdMetricsReport>>,
+          TError,
+          Awaited<ReturnType<typeof postAccountsIdMetricsReport>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostAccountsIdMetricsReport<TData = Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Informe de series de una cuenta
+ */
+
+export function usePostAccountsIdMetricsReport<TData = Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError = unknown>(
+ id: number,
+    metricsReportRequest?: MetricsReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdMetricsReport>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostAccountsIdMetricsReportQueryOptions(id,metricsReportRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type postAccountsIdDisconnectResponse204 = {
   data: void
   status: 204
@@ -2373,128 +2730,6 @@ export function useGetSyncRunsId<TData = Awaited<ReturnType<typeof getSyncRunsId
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetSyncRunsIdQueryOptions(id,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export type getPostsIdMetricsResponse200 = {
-  data: PostSeriesResponse
-  status: 200
-}
-
-export type getPostsIdMetricsResponseSuccess = (getPostsIdMetricsResponse200) & {
-  headers: Headers;
-};
-;
-
-export type getPostsIdMetricsResponse = (getPostsIdMetricsResponseSuccess)
-
-export const getGetPostsIdMetricsUrl = (id: number,
-    params: GetPostsIdMetricsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/v1/posts/${id}/metrics?${stringifiedParams}` : `/api/v1/posts/${id}/metrics`
-}
-
-export const getPostsIdMetrics = async (id: number,
-    params: GetPostsIdMetricsParams, options?: RequestInit): Promise<getPostsIdMetricsResponse> => {
-
-  return orvalFetch<getPostsIdMetricsResponse>(getGetPostsIdMetricsUrl(id,params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetPostsIdMetricsQueryKey = (id: number,
-    params?: GetPostsIdMetricsParams,) => {
-    return [
-    `/api/v1/posts/${id}/metrics`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-
-export const getGetPostsIdMetricsQueryOptions = <TData = Awaited<ReturnType<typeof getPostsIdMetrics>>, TError = unknown>(id: number,
-    params: GetPostsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetPostsIdMetricsQueryKey(id,params);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPostsIdMetrics>>> = ({ signal }) => getPostsIdMetrics(id,params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type GetPostsIdMetricsQueryResult = NonNullable<Awaited<ReturnType<typeof getPostsIdMetrics>>>
-export type GetPostsIdMetricsQueryError = unknown
-
-
-export function useGetPostsIdMetrics<TData = Awaited<ReturnType<typeof getPostsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetPostsIdMetricsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getPostsIdMetrics>>,
-          TError,
-          Awaited<ReturnType<typeof getPostsIdMetrics>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetPostsIdMetrics<TData = Awaited<ReturnType<typeof getPostsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetPostsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getPostsIdMetrics>>,
-          TError,
-          Awaited<ReturnType<typeof getPostsIdMetrics>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetPostsIdMetrics<TData = Awaited<ReturnType<typeof getPostsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetPostsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-
-export function useGetPostsIdMetrics<TData = Awaited<ReturnType<typeof getPostsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetPostsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPostsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getGetPostsIdMetricsQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -3658,6 +3893,9 @@ export const getGetAccountsIdPostsUrl = (id: number,
   return stringifiedParams.length > 0 ? `/api/v1/accounts/${id}/posts?${stringifiedParams}` : `/api/v1/accounts/${id}/posts`
 }
 
+/**
+ * @summary Página de posts de una cuenta
+ */
 export const getAccountsIdPosts = async (id: number,
     params?: GetAccountsIdPostsParams, options?: RequestInit): Promise<getAccountsIdPostsResponse> => {
 
@@ -3732,6 +3970,9 @@ export function useGetAccountsIdPosts<TData = Awaited<ReturnType<typeof getAccou
     params?: GetAccountsIdPostsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdPosts>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Página de posts de una cuenta
+ */
 
 export function useGetAccountsIdPosts<TData = Awaited<ReturnType<typeof getAccountsIdPosts>>, TError = unknown>(
  id: number,
@@ -3740,128 +3981,6 @@ export function useGetAccountsIdPosts<TData = Awaited<ReturnType<typeof getAccou
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetAccountsIdPostsQueryOptions(id,params,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  return withQueryKey(query, queryOptions.queryKey);
-}
-
-
-
-
-
-
-
-export type getAccountsIdMetricsResponse200 = {
-  data: AccountSeriesResponse
-  status: 200
-}
-
-export type getAccountsIdMetricsResponseSuccess = (getAccountsIdMetricsResponse200) & {
-  headers: Headers;
-};
-;
-
-export type getAccountsIdMetricsResponse = (getAccountsIdMetricsResponseSuccess)
-
-export const getGetAccountsIdMetricsUrl = (id: number,
-    params: GetAccountsIdMetricsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : String(value))
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/v1/accounts/${id}/metrics?${stringifiedParams}` : `/api/v1/accounts/${id}/metrics`
-}
-
-export const getAccountsIdMetrics = async (id: number,
-    params: GetAccountsIdMetricsParams, options?: RequestInit): Promise<getAccountsIdMetricsResponse> => {
-
-  return orvalFetch<getAccountsIdMetricsResponse>(getGetAccountsIdMetricsUrl(id,params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getGetAccountsIdMetricsQueryKey = (id: number,
-    params?: GetAccountsIdMetricsParams,) => {
-    return [
-    `/api/v1/accounts/${id}/metrics`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-
-export const getGetAccountsIdMetricsQueryOptions = <TData = Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError = unknown>(id: number,
-    params: GetAccountsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getGetAccountsIdMetricsQueryKey(id,params);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAccountsIdMetrics>>> = ({ signal }) => getAccountsIdMetrics(id,params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type GetAccountsIdMetricsQueryResult = NonNullable<Awaited<ReturnType<typeof getAccountsIdMetrics>>>
-export type GetAccountsIdMetricsQueryError = unknown
-
-
-export function useGetAccountsIdMetrics<TData = Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetAccountsIdMetricsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getAccountsIdMetrics>>,
-          TError,
-          Awaited<ReturnType<typeof getAccountsIdMetrics>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetAccountsIdMetrics<TData = Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetAccountsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getAccountsIdMetrics>>,
-          TError,
-          Awaited<ReturnType<typeof getAccountsIdMetrics>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useGetAccountsIdMetrics<TData = Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetAccountsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-
-export function useGetAccountsIdMetrics<TData = Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError = unknown>(
- id: number,
-    params: GetAccountsIdMetricsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getAccountsIdMetrics>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
- , queryClient?: QueryClient
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getGetAccountsIdMetricsQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

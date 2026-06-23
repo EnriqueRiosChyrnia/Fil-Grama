@@ -4,9 +4,9 @@ import {
   useGetClientsId,
   useGetClientsClientIdAccounts,
   useGetClientsClientIdSummary,
-  useGetAccountsIdMetrics,
 } from '../../api/generated/endpoints';
 import type { AccountResponse } from '../../api/generated/model';
+import { useAccountReport, pointsForMetric } from '../accounts/metricsReport';
 import {
   Button,
   Card,
@@ -82,12 +82,13 @@ export function ClientDashboardPage() {
   const primary =
     sel.accountId !== 'ALL' ? accounts.find((a) => a.id === sel.accountId) : connected[0];
   const trendMetric = primary?.platform ? primaryMetricKey('alcance', primary.platform) ?? undefined : undefined;
-  const trendQ = useGetAccountsIdMetrics(
+  const trendQ = useAccountReport(
     primary?.id ?? 0,
-    { metric: trendMetric ?? '', from: dr.from, to: dr.to, granularity: 'day' },
-    { query: { enabled: !!primary?.id && !!trendMetric && hasData } },
+    trendMetric ? [trendMetric] : [],
+    dr,
+    { enabled: !!primary?.id && !!trendMetric && hasData },
   );
-  const trendPoints = (trendQ.data?.data?.points ?? []).map((p) => ({ x: p.capturedAt ?? '', value: p.value ?? 0 }));
+  const trendPoints = pointsForMetric(trendQ.data?.data, trendMetric).map((p) => ({ x: p.date ?? '', value: p.value ?? 0 }));
 
   if (detailQ.isLoading) {
     return (
