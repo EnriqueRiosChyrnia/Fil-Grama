@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   useGetAccountsId,
-  useGetAccountsIdMetrics,
   useGetAccountsIdPosts,
 } from '../../api/generated/endpoints';
-import type { PostListItem } from '../../api/generated/model';
+import type { AccountReportResponse, PostListItem } from '../../api/generated/model';
+import { useAccountReport, pointsForMetric } from './metricsReport';
 import { Card, KpiCard, TrendChart, NetworkChip, DateRangeControl, InfoTooltip, Button } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState, Skeleton } from '../../components/layout';
 import { useCatalog, CONCEPT_BY_KEY, CORE_CONCEPTS, type CoreConcept } from '../../lib/catalog';
@@ -47,27 +47,23 @@ function Breadcrumb({ clientId }: { clientId?: string }) {
   );
 }
 
-/** KPI de un concepto CORE para esta cuenta, dirigido por el mapeo+catálogo. */
+/**
+ * KPI de un concepto CORE para esta cuenta, leído del informe compartido del
+ * panel (una sola llamada :report con todas las métricas) — sin request propia.
+ */
 function ConceptKpi({
-  accountId,
+  report,
+  loading,
   platform,
   concept,
-  from,
-  to,
 }: {
-  accountId: number;
+  report: AccountReportResponse | undefined;
+  loading: boolean;
   platform: string;
   concept: CoreConcept;
-  from: string;
-  to: string;
 }) {
   const key = primaryMetricKey(concept, platform);
-  const q = useGetAccountsIdMetrics(
-    accountId,
-    { metric: key ?? '', from, to, granularity: 'day' },
-    { query: { enabled: !!accountId && !!key } },
-  );
-  const values = (q.data?.data?.points ?? []).map((p) => p.value ?? 0);
+  const values = pointsForMetric(report, key).map((p) => p.value ?? 0);
   const meta = CONCEPT_BY_KEY[concept];
   // 'seguidores' es stock (último valor); flujos se suman en el rango.
   const value = values.length
@@ -75,7 +71,7 @@ function ConceptKpi({
       ? values[values.length - 1]
       : values.reduce((a, b) => a + b, 0)
     : null;
-  return <KpiCard label={meta.label} info={meta.info} value={q.isLoading ? '…' : formatByUnit(value, meta.unit)} />;
+  return <KpiCard label={meta.label} info={meta.info} value={loading ? '…' : formatByUnit(value, meta.unit)} />;
 }
 
 export function AccountDetailPage() {
@@ -96,12 +92,31 @@ export function AccountDetailPage() {
   const metricItems = useMemo(() => accountMetrics(catalog, platform), [catalog, platform]);
   const activeMetric = metric ?? primaryMetricKey('alcance', platform) ?? metricItems[0]?.key ?? null;
 
-  const seriesQ = useGetAccountsIdMetrics(
-    id,
-    { metric: activeMetric ?? '', from: dr.from, to: dr.to, granularity: 'day' },
-    { query: { enabled: Number.isFinite(id) && !!activeMetric } },
-  );
-  const points = (seriesQ.data?.data?.points ?? []).map((p) => ({ x: p.capturedAt ?? '', value: p.value ?? 0 }));
+  // Conceptos CORE visibles para esta red: sólo si su métrica existe a NIVEL
+  // CUENTA en el catálogo (no inventar paridad: p.ej. TikTok no tiene alcance).
+  const accountKeys = useMemo(() => new Set(metricItems.map((it) => it.key)), [metricItems]);
+  const concepts = CORE_CONCEPTS.filter((c) => {
+    const k = primaryMetricKey(c.key, platform);
+    return !!k && accountKeys.has(k);
+  });
+
+  // Una sola llamada :report con TODAS las métricas del panel (KPIs CORE + la
+  // métrica del gráfico principal), en vez de una request por métrica.
+  const panelMetrics = (() => {
+    const keys = new Set<string>();
+    if (activeMetric) keys.add(activeMetric);
+    for (const c of concepts) {
+      const k = primaryMetricKey(c.key, platform);
+      if (k) keys.add(k);
+    }
+    return [...keys];
+  })();
+
+  const seriesQ = useAccountReport(id, panelMetrics, dr, {
+    enabled: Number.isFinite(id) && panelMetrics.length > 0,
+  });
+  const report = seriesQ.data?.data;
+  const points = pointsForMetric(report, activeMetric).map((p) => ({ x: p.date ?? '', value: p.value ?? 0 }));
   const heroValue = points.length ? points[points.length - 1].value : null;
   const heroTrend = trendFromDelta(pctDelta(points.map((p) => p.value)));
 
@@ -116,14 +131,6 @@ export function AccountDetailPage() {
     { query: { enabled: Number.isFinite(id) } },
   );
   const posts = postsQ.data?.data?.content ?? [];
-
-  // Concepto CORE visible sólo si su métrica existe a NIVEL CUENTA en el catálogo de
-  // esta red (no inventar paridad: p.ej. TikTok no tiene alcance de cuenta).
-  const accountKeys = useMemo(() => new Set(metricItems.map((it) => it.key)), [metricItems]);
-  const concepts = CORE_CONCEPTS.filter((c) => {
-    const k = primaryMetricKey(c.key, platform);
-    return !!k && accountKeys.has(k);
-  });
 
   const openPost = (p: PostListItem) =>
     navigate(`/posts/${p.id}`, { state: { post: p, clientId, accountId } });
@@ -209,7 +216,7 @@ export function AccountDetailPage() {
       {concepts.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 16, marginTop: 18 }}>
           {concepts.map((c) => (
-            <ConceptKpi key={c.key} accountId={id} platform={platform} concept={c.key} from={dr.from} to={dr.to} />
+            <ConceptKpi key={c.key} report={report} loading={seriesQ.isLoading} platform={platform} concept={c.key} />
           ))}
         </div>
       )}

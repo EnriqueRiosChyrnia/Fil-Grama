@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "codegen": "orval --config orval.config.ts",
+    "codegen:check": "orval --config orval.config.ts && git diff --exit-code -- src/api/generated",
     "test:e2e": "playwright test"
   },
   "dependencies": {
