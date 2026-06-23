@@ -144,9 +144,26 @@ Paginación: `?page=0&size=20&sort=campo,desc` → `{content:[...], page, size, 
 | **Detalle de post / story** | "¿cómo le fue a esto?" | `GET /posts/{id}/metrics` | abrir permalink | Preview (miniatura/`remoteThumbnailUrl`) + métricas en el tiempo. |
 | **Todas las publicaciones** | explorar/ordenar posts | `/accounts/{id}/posts` | ordenar por métrica | Grilla de miniaturas; orden cronológico por defecto. |
 | **Comparar cuentas** | comparar hasta 4 cuentas | `/summary` o `/accounts/{id}/metrics` por cuenta | elegir cuentas/métrica, toggle Tabla↔Barras | Ver §11 (alcance cerrado). |
-| **Reporte** | vista limpia exportable | `POST /clients/{id}/reports`, `/download` | generar, descargar MD/PDF | SUMMARY (1 pág) / EXTENDED (grilla por tipo). |
+| **Reporte** | vista en vivo + exportar | `POST /clients/{id}/reports:preview` (vista), `POST /clients/{id}/reports` + `/download` (exportar) | refrescar preview, exportar MD/PDF | Se VE en pantalla (`:preview` → `ReportData`); el archivo se genera sólo al Exportar. SUMMARY (top 3) / EXTENDED (grilla por tipo). |
 | **Administración** [ADMIN] | gestión | `/users`, prioritarios, `/sync/runs` | CRUD usuarios, marcar prioritarios, ver/disparar job | Fuera del uso diario; oculto a empleados. |
 | **Mapa de flujo** | navegación/overview | — | — | Pantalla de orientación (cerrada en diseño). |
+
+> **Navegación de cliente — por PESTAÑAS (track FE nav/reporte; SUPERSEDE el breadcrumb suelto).** Las
+> pantallas client-scoped ya no se navegan sólo con el breadcrumb "‹": viven dentro de un **workspace de
+> cliente** (`features/clients/ClientWorkspace`) con **header persistente** (nombre del cliente, chips de
+> redes con estado + botón "Reconectar {red}" si hay cuentas en error, breadcrumb "‹ Clientes") y una
+> **barra de pestañas** `Dashboard · Publicaciones · Comparar · Reporte` → paths `clients/:id`,
+> `clients/:id/publicaciones`, `clients/:id/compare`, `clients/:id/report` (móvil = scroll horizontal). El
+> detalle de cuenta (`accounts/:accountId`) y la grilla de posts (`accounts/:accountId/posts`) cuelgan del
+> mismo workspace, así el header no se re-monta al navegar. Wiring: cada feature exporta `clientRoutes`
+> (paths relativos) y `features/clients/routes.tsx` los anida bajo `<Outlet/>`; el router central sigue sin
+> tocarse (glob). Cambios de navegación clave:
+> - **Dashboard:** la lista "Cuentas conectadas" es **clickeable** → detalle de cuenta (antes no llevaba a ningún lado).
+> - **Publicaciones** (entrada nueva): selector cascada red→cuenta → reutiliza la grilla `AllPostsPage`
+>   (cuenta única = salto directo). Click en post → `posts/:postId` (fuera del workspace).
+> - **Comparar:** la `CompareAccountsPage` existente, ahora alcanzable por pestaña.
+> - **Reporte:** **vista en vivo + exportar** sobre `:preview` (ver fila de la tabla). Query key del preview:
+>   `qk.feature('reportPreview', clientId, reportType, from, to, platforms, rankBy)`.
 
 ## 9. Flujos clave
 

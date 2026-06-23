@@ -48,8 +48,10 @@ import type {
   PostAuthLogin200,
   PostAuthRefresh200,
   PostReportResponse,
+  PreviewReportRequest,
   PriorityClientRequest,
   RefreshRequest,
+  ReportData,
   ReportResource,
   SummaryResponse,
   SyncRunDetailResponse,
@@ -1296,6 +1298,127 @@ export function usePostClientsClientIdReports<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getPostClientsClientIdReportsQueryOptions(clientId,generateReportRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postClientsClientIdReportsPreviewResponse200 = {
+  data: ReportData
+  status: 200
+}
+
+export type postClientsClientIdReportsPreviewResponseSuccess = (postClientsClientIdReportsPreviewResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postClientsClientIdReportsPreviewResponse = (postClientsClientIdReportsPreviewResponseSuccess)
+
+export const getPostClientsClientIdReportsPreviewUrl = (clientId: number,) => {
+
+
+
+
+  return `/api/v1/clients/${clientId}/reports:preview`
+}
+
+/**
+ * Devuelve el ReportData que consume el renderer (Period, KPIs por red, evolución de alcance, publicaciones agrupadas, destacadas) para pintar la vista en pantalla. Mismo armado que el export → no divergen. Cliente inexistente → 404; rango inválido → 400; rankBy desconocido → 422; rango sin datos → estructura vacía amable (no error).
+ * @summary Vista previa del reporte (datos, sin archivo)
+ */
+export const postClientsClientIdReportsPreview = async (clientId: number,
+    previewReportRequest: PreviewReportRequest, options?: RequestInit): Promise<postClientsClientIdReportsPreviewResponse> => {
+
+  return orvalFetch<postClientsClientIdReportsPreviewResponse>(getPostClientsClientIdReportsPreviewUrl(clientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(previewReportRequest)
+  }
+);}
+
+
+
+
+
+export const getPostClientsClientIdReportsPreviewQueryKey = (clientId: number,
+    previewReportRequest?: PreviewReportRequest,) => {
+    return [
+    'POST', `/api/v1/clients/${clientId}/reports:preview`, previewReportRequest
+    ] as const;
+    }
+
+
+export const getPostClientsClientIdReportsPreviewQueryOptions = <TData = Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError = unknown>(clientId: number,
+    previewReportRequest: PreviewReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostClientsClientIdReportsPreviewQueryKey(clientId,previewReportRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>> = ({ signal }) => postClientsClientIdReportsPreview(clientId,previewReportRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: clientId !== null && clientId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostClientsClientIdReportsPreviewQueryResult = NonNullable<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>>
+export type PostClientsClientIdReportsPreviewQueryError = unknown
+
+
+export function usePostClientsClientIdReportsPreview<TData = Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError = unknown>(
+ clientId: number,
+    previewReportRequest: PreviewReportRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>,
+          TError,
+          Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostClientsClientIdReportsPreview<TData = Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError = unknown>(
+ clientId: number,
+    previewReportRequest: PreviewReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>,
+          TError,
+          Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostClientsClientIdReportsPreview<TData = Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError = unknown>(
+ clientId: number,
+    previewReportRequest: PreviewReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Vista previa del reporte (datos, sin archivo)
+ */
+
+export function usePostClientsClientIdReportsPreview<TData = Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError = unknown>(
+ clientId: number,
+    previewReportRequest: PreviewReportRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdReportsPreview>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostClientsClientIdReportsPreviewQueryOptions(clientId,previewReportRequest,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

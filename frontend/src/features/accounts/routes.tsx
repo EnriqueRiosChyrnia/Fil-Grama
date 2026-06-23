@@ -1,12 +1,14 @@
 import type { AppRoute } from '../../routes/types';
 
 /**
- * Rutas del track Cuentas (FB). Detalle por red/cuenta. La grilla de posts y el
- * detalle de post viven en `features/posts`. Drill-down entre tracks por path string.
+ * Detalle por red/cuenta (track Cuentas, FB). Pantalla client-scoped: se monta
+ * dentro del workspace de cliente (pestañas), por eso se exporta como `clientRoutes`
+ * con path RELATIVO a `clients/:clientId`. `clients/routes.tsx` la anida bajo el
+ * <Outlet/>. La grilla de posts y el detalle de post viven en `features/posts`.
  */
-export const routes: AppRoute[] = [
+export const clientRoutes: AppRoute[] = [
   {
-    path: 'clients/:clientId/accounts/:accountId',
+    path: 'accounts/:accountId',
     lazy: async () => ({ Component: (await import('./AccountDetailPage')).AccountDetailPage }),
   },
 ];
