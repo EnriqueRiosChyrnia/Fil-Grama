@@ -10,7 +10,7 @@ import { Card, KpiCard, TrendChart, NetworkChip, DateRangeControl, InfoTooltip, 
 import { EmptyState, ErrorState, LoadingState, Skeleton } from '../../components/layout';
 import { useCatalog, CONCEPT_BY_KEY, CORE_CONCEPTS, type CoreConcept } from '../../lib/catalog';
 import { primaryMetricKey } from '../../lib/metrics';
-import { computeRange, formatByUnit, formatDate, trendFromDelta, type RangeDays } from '../../lib/format';
+import { computeRange, formatByUnit, formatDate, trendFromDelta, WIDE_RANGES, type RangeDays } from '../../lib/format';
 import { accountMetrics, primaryPostMetricKey } from './catalogMetrics';
 import { PostThumb } from '../posts/PostThumb';
 
@@ -209,7 +209,7 @@ export function AccountDetailPage() {
             <span style={{ fontSize: 13, color: 'var(--fg-text-tertiary)' }}>Sin métricas en el catálogo</span>
           )}
         </div>
-        <DateRangeControl value={range} onChange={setRange} />
+        <DateRangeControl value={range} onChange={setRange} options={WIDE_RANGES} />
       </div>
 
       {/* CORE concept KPIs (consistencia visual entre redes) */}

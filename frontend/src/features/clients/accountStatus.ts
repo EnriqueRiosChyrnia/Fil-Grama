@@ -10,12 +10,15 @@ export function normStatus(s?: string | null): AccountStatus {
   return 'UNKNOWN';
 }
 
-export type StatusTone = 'ok' | 'bad' | 'muted';
+// 'neutral' = gris con presencia (estado accionable: reconectar); 'muted' = gris
+// lavado (estados pasivos: no compatible / sin estado).
+export type StatusTone = 'ok' | 'bad' | 'neutral' | 'muted';
 
 export const STATUS_META: Record<AccountStatus, { label: string; tone: StatusTone }> = {
   CONNECTED: { label: 'Conectada', tone: 'ok' },
   ERROR: { label: 'Error de token', tone: 'bad' },
-  DISCONNECTED: { label: 'Desconectada', tone: 'bad' },
+  // Desconectada = gris neutro (no es un error rojo); ERROR sí queda rojo.
+  DISCONNECTED: { label: 'Desconectada', tone: 'neutral' },
   UNSUPPORTED: { label: 'No compatible', tone: 'muted' },
   UNKNOWN: { label: 'Sin estado', tone: 'muted' },
 };

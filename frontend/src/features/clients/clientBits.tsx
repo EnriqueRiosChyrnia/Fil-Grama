@@ -4,6 +4,7 @@ import { STATUS_META, normStatus, type StatusTone } from './accountStatus';
 const TONE_STYLE: Record<StatusTone, { bg: string; fg: string }> = {
   ok: { bg: 'var(--fg-success-bg)', fg: 'var(--fg-success-fg)' },
   bad: { bg: 'var(--fg-danger-bg)', fg: 'var(--fg-danger-fg)' },
+  neutral: { bg: 'var(--fg-gray-100)', fg: 'var(--fg-gray-600)' },
   muted: { bg: 'var(--fg-bg-muted)', fg: 'var(--fg-text-secondary)' },
 };
 

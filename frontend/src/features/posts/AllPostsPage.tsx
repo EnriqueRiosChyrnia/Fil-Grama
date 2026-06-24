@@ -5,7 +5,7 @@ import type { PostListItem } from '../../api/generated/model';
 import { Card, Button, NetworkChip, DateRangeControl } from '../../components/ui';
 import { EmptyState, ErrorState, Skeleton } from '../../components/layout';
 import { useCatalog } from '../../lib/catalog';
-import { computeRange, formatByUnit, formatDate, type RangeDays } from '../../lib/format';
+import { computeRange, formatByUnit, formatDate, WIDE_RANGES, type RangeDays } from '../../lib/format';
 import { postMetrics } from '../accounts/catalogMetrics';
 import { PostThumb } from './PostThumb';
 
@@ -105,7 +105,7 @@ export function AllPostsPage() {
             ))}
           </select>
         </div>
-        <DateRangeControl value={range} onChange={onRange} />
+        <DateRangeControl value={range} onChange={onRange} options={WIDE_RANGES} />
       </div>
 
       {/* count */}
