@@ -12,6 +12,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,6 +26,11 @@ import com.filgrama.oauth.OAuthProfile;
 import com.filgrama.oauth.OAuthRefreshResult;
 import com.filgrama.oauth.TokenRevokedException;
 import com.filgrama.oauth.config.OAuthProperties;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 
 /** Tests del provider real de TikTok con {@code /v2/oauth/token/} mockeado a nivel HTTP. */
 class TikTokOAuthProviderTest {
@@ -169,5 +175,53 @@ class TikTokOAuthProviderTest {
 
         assertThat(p.fetchProfile(Platform.TIKTOK, "a-tok")).isEmpty();
         server.verify();
+    }
+
+    // ---- Observabilidad: WARN cuando user.info falla o viene vacío (be-handle) ----
+
+    @Test
+    void fetchProfileLogsWarnWhenUserInfoIsEmpty() {
+        TikTokOAuthProvider p = provider(props());
+        ListAppender<ILoggingEvent> logs = attachAppender();
+        // 200 OK pero el perfil no trae username/display_name/avatar (límite de sandbox / scope).
+        server.expect(requestTo(containsString("/v2/user/info/")))
+                .andRespond(withSuccess("""
+                        {"data":{"user":{"open_id":"oid-1"}},"error":{"code":"ok","message":"","log_id":"z9"}}""",
+                        MediaType.APPLICATION_JSON));
+
+        Optional<OAuthProfile> profile = p.fetchProfile(Platform.TIKTOK, "a-tok");
+
+        assertThat(profile).isEmpty();
+        assertThat(warnMessages(logs))
+                .anySatisfy(m -> assertThat(m).contains("user.info").contains("vacío"));
+        server.verify();
+    }
+
+    @Test
+    void fetchProfileLogsWarnWhenUserInfoFails() {
+        TikTokOAuthProvider p = provider(props());
+        ListAppender<ILoggingEvent> logs = attachAppender();
+        server.expect(requestTo(containsString("/v2/user/info/")))
+                .andRespond(withStatus(HttpStatus.UNAUTHORIZED));
+
+        assertThat(p.fetchProfile(Platform.TIKTOK, "a-tok")).isEmpty();
+        assertThat(warnMessages(logs))
+                .anySatisfy(m -> assertThat(m).contains("user.info").contains("falló"));
+        server.verify();
+    }
+
+    private ListAppender<ILoggingEvent> attachAppender() {
+        Logger logger = (Logger) LoggerFactory.getLogger(TikTokOAuthProvider.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        return appender;
+    }
+
+    private java.util.List<String> warnMessages(ListAppender<ILoggingEvent> logs) {
+        return logs.list.stream()
+                .filter(e -> e.getLevel() == Level.WARN)
+                .map(ILoggingEvent::getFormattedMessage)
+                .toList();
     }
 }
