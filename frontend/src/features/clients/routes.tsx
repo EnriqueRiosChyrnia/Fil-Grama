@@ -35,6 +35,10 @@ export const routes: AppRoute[] = [
       ...accountRoutes, // accounts/:accountId (detalle de cuenta)
       ...compareRoutes, // compare
       ...reportRoutes, // report
+      {
+        path: 'cuentas', // gestionar redes: listar/conectar/reconectar/desconectar
+        lazy: async () => ({ Component: (await import('./CuentasPage')).CuentasPage }),
+      },
     ],
   },
   {

@@ -109,7 +109,8 @@ export function ClientDashboardPage() {
           <EmptyState
             icon={<ClockIcon />}
             title="Este cliente todavía no tiene redes conectadas"
-            description="Conectá Instagram, Facebook o TikTok para empezar a capturar métricas. El alta y la conexión se hacen desde el flujo de Clientes."
+            description="Conectá una red para empezar a ver métricas, publicaciones y reportes. Te llevamos al inicio de sesión oficial de la red; nunca guardamos la contraseña."
+            action={<Button onClick={() => navigate(`/clients/${id}/cuentas`)}>Conectar red</Button>}
           />
         ) : allError ? (
           <EmptyState
