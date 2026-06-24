@@ -2,6 +2,8 @@ package com.filgrama.oauth.provider;
 
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -43,6 +45,8 @@ import tools.jackson.databind.JsonNode;
 @Order(100)
 @Profile("!local & !test")
 public class TikTokOAuthProvider implements OAuthProvider {
+
+    private static final Logger log = LoggerFactory.getLogger(TikTokOAuthProvider.class);
 
     private static final long ACCESS_TTL_SECONDS = 24L * 3600;
 
@@ -132,10 +136,16 @@ public class TikTokOAuthProvider implements OAuthProvider {
             String displayName = OAuthHttpSupport.text(user, "display_name");
             String avatarUrl = OAuthHttpSupport.text(user, "avatar_url");
             if (username == null && displayName == null && avatarUrl == null) {
+                // Observabilidad: en sandbox (sin App Review del scope user.info.profile) el endpoint
+                // responde 200 pero sin perfil; la cuenta queda con el fallback open_id. No es un error.
+                log.warn("TikTok user.info devolvió un perfil vacío (sin username/display_name/avatar_url);"
+                        + " se mantiene el fallback open_id");
                 return null;
             }
             return new OAuthProfile(username != null ? "@" + username : null, displayName, avatarUrl);
         } catch (OAuthException e) {
+            // Best-effort: la falla no rompe el canje/refresh, pero la dejamos visible para diagnóstico.
+            log.warn("TikTok user.info falló: {}; se mantiene el nombre/handle actual", e.getMessage());
             return null;
         }
     }
