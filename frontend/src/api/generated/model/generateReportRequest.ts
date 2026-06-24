@@ -13,5 +13,6 @@ export interface GenerateReportRequest {
   from: string;
   to: string;
   platforms?: string[];
+  accountIds?: number[];
   rankBy?: string;
 }

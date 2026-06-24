@@ -51,6 +51,7 @@ export * from './platformKpis';
 export * from './platformSummary';
 export * from './postAuthLogin200';
 export * from './postAuthRefresh200';
+export * from './postClientsClientIdAccountsConnectPlatformParams';
 export * from './postGroup';
 export * from './postListItem';
 export * from './postReportResponse';

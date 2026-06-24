@@ -47,6 +47,7 @@ import type {
   PageResponseUserResponse,
   PostAuthLogin200,
   PostAuthRefresh200,
+  PostClientsClientIdAccountsConnectPlatformParams,
   PostReportResponse,
   PreviewReportRequest,
   PriorityClientRequest,
@@ -1444,18 +1445,27 @@ export type postClientsClientIdAccountsConnectPlatformResponseSuccess = (postCli
 export type postClientsClientIdAccountsConnectPlatformResponse = (postClientsClientIdAccountsConnectPlatformResponseSuccess)
 
 export const getPostClientsClientIdAccountsConnectPlatformUrl = (clientId: number,
-    platform: string,) => {
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/v1/clients/${clientId}/accounts/connect/${platform}`
+  return stringifiedParams.length > 0 ? `/api/v1/clients/${clientId}/accounts/connect/${platform}?${stringifiedParams}` : `/api/v1/clients/${clientId}/accounts/connect/${platform}`
 }
 
 export const postClientsClientIdAccountsConnectPlatform = async (clientId: number,
-    platform: string, options?: RequestInit): Promise<postClientsClientIdAccountsConnectPlatformResponse> => {
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams, options?: RequestInit): Promise<postClientsClientIdAccountsConnectPlatformResponse> => {
 
-  return orvalFetch<postClientsClientIdAccountsConnectPlatformResponse>(getPostClientsClientIdAccountsConnectPlatformUrl(clientId,platform),
+  return orvalFetch<postClientsClientIdAccountsConnectPlatformResponse>(getPostClientsClientIdAccountsConnectPlatformUrl(clientId,platform,params),
   {
     ...options,
     method: 'POST'
@@ -1469,24 +1479,26 @@ export const postClientsClientIdAccountsConnectPlatform = async (clientId: numbe
 
 
 export const getPostClientsClientIdAccountsConnectPlatformQueryKey = (clientId: number,
-    platform: string,) => {
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams,) => {
     return [
-    'POST', `/api/v1/clients/${clientId}/accounts/connect/${platform}`
+    'POST', `/api/v1/clients/${clientId}/accounts/connect/${platform}`, ...(params ? [params] : [])
     ] as const;
     }
 
 
 export const getPostClientsClientIdAccountsConnectPlatformQueryOptions = <TData = Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError = unknown>(clientId: number,
-    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getPostClientsClientIdAccountsConnectPlatformQueryKey(clientId,platform);
+  const queryKey =  queryOptions?.queryKey ?? getPostClientsClientIdAccountsConnectPlatformQueryKey(clientId,platform,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>> = ({ signal }) => postClientsClientIdAccountsConnectPlatform(clientId,platform, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>> = ({ signal }) => postClientsClientIdAccountsConnectPlatform(clientId,platform,params, { signal, ...requestOptions });
 
 
 
@@ -1501,7 +1513,8 @@ export type PostClientsClientIdAccountsConnectPlatformQueryError = unknown
 
 export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError = unknown>(
  clientId: number,
-    platform: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>> & Pick<
+    platform: string,
+    params: undefined |  PostClientsClientIdAccountsConnectPlatformParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>> & Pick<
         DefinedInitialDataOptions<
           Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>,
           TError,
@@ -1512,7 +1525,8 @@ export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<Re
   ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError = unknown>(
  clientId: number,
-    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>> & Pick<
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>> & Pick<
         UndefinedInitialDataOptions<
           Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>,
           TError,
@@ -1523,17 +1537,19 @@ export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<Re
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError = unknown>(
  clientId: number,
-    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 
 export function usePostClientsClientIdAccountsConnectPlatform<TData = Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError = unknown>(
  clientId: number,
-    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+    platform: string,
+    params?: PostClientsClientIdAccountsConnectPlatformParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdAccountsConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
  , queryClient?: QueryClient
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
-  const queryOptions = getPostClientsClientIdAccountsConnectPlatformQueryOptions(clientId,platform,options)
+  const queryOptions = getPostClientsClientIdAccountsConnectPlatformQueryOptions(clientId,platform,params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

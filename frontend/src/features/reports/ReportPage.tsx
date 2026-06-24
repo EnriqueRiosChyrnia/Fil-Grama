@@ -67,16 +67,6 @@ const PAPER_MAX = 860;
 /** Orden de presentación de redes (IG · FB · TikTok) para listar cuentas. */
 const NET_ORDER = ['INSTAGRAM', 'FACEBOOK', 'TIKTOK'];
 
-/**
- * El backend v2 acepta `accountIds[]` (opcional) en :preview y export para reportar
- * sólo ciertas cuentas (HANDOFF §10 multi-cuenta). Hasta correr `npm run codegen`
- * contra el backend nuevo, los modelos generados no lo declaran; lo extendemos
- * localmente en vez de editar a mano `api/generated/*` (anti-drift). El campo extra
- * viaja igual: las fns generadas hacen `JSON.stringify(body)`.
- */
-type PreviewBody = PreviewReportRequest & { accountIds?: number[] };
-type GenerateBody = GenerateReportRequest & { accountIds?: number[] };
-
 function accountOptionLabel(a: AccountResponse): string {
   return a.handle || a.displayName || `Cuenta ${a.id}`;
 }
@@ -175,7 +165,7 @@ export function ReportPage() {
   const previewQ = useQuery({
     queryKey: qk.feature('reportPreview', id, reportType, dr.from, dr.to, selectedPlatforms, accountIds, rankBy),
     queryFn: ({ signal }) => {
-      const body: PreviewBody = {
+      const body: PreviewReportRequest = {
         reportType,
         from: dr.from,
         to: dr.to,
@@ -215,7 +205,7 @@ export function ReportPage() {
     setExportError(null);
     setExportingFmt(format);
     try {
-      const body: GenerateBody = {
+      const body: GenerateReportRequest = {
         reportType,
         format,
         from: dr.from,

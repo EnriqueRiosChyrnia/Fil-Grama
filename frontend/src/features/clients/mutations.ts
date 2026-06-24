@@ -66,9 +66,9 @@ export function useDisconnectAccount(clientId: number) {
  * RECONEXIÓN: `connect(platform, accountId)` pasa el `accountId` esperado como query
  * param; el backend v2 valida que el open_id devuelto por la red coincida con esa
  * cuenta y rechaza (problem+json) si reconectaste la equivocada. El param es opcional
- * en el contrato nuevo: lo adosamos a la URL generada en vez de editar a mano
- * `api/generated/*` (anti-drift); al correr `npm run codegen` contra el backend nuevo
- * el endpoint generado lo declarará nativamente y este wrapper sigue funcionando.
+ * en el contrato nuevo y el cliente generado ya lo declara nativamente
+ * (`PostClientsClientIdAccountsConnectPlatformParams`), así que se lo pasamos a la fn
+ * generada en vez de adosarlo a mano a la URL.
  */
 export function useConnectFlow(clientId: number) {
   const [pending, setPending] = useState<string | null>(null);
@@ -80,8 +80,11 @@ export function useConnectFlow(clientId: number) {
       setPending(platform);
       const tab = window.open('about:blank', '_blank');
       try {
-        let path = getPostClientsClientIdAccountsConnectPlatformUrl(clientId, platform.toLowerCase());
-        if (accountId != null) path += `?accountId=${accountId}`;
+        const path = getPostClientsClientIdAccountsConnectPlatformUrl(
+          clientId,
+          platform.toLowerCase(),
+          accountId != null ? { accountId } : undefined,
+        );
         const res = await orvalFetch<{ data: ConnectResponse }>(path, { method: 'POST' });
         const url = res.data?.authorizationUrl;
         if (!url) throw new Error('No recibimos el enlace de autorización. Probá de nuevo.');
