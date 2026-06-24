@@ -91,6 +91,34 @@ public class MediaService {
         return mediaAssets.save(asset);
     }
 
+    /** ¿El post ya tiene una miniatura cacheada? Evita re-descargar/duplicar en cada corrida (TAREA F). */
+    @Transactional(readOnly = true)
+    public boolean hasThumbnail(Long postId) {
+        return mediaAssets.findByPostId(postId).stream()
+                .anyMatch(a -> a.getKind() == MediaKind.THUMBNAIL);
+    }
+
+    /**
+     * Variante best-effort de {@link #cacheThumbnail} para el sync (TAREA F): corre en la <b>misma</b>
+     * transacción de la cuenta (así ve el post recién insertado y no choca con la FK), pero un fallo de
+     * storage se traga y devuelve {@link Optional#empty()} en vez de propagarlo, para no abortar la
+     * captura de posts/métricas ya hecha.
+     *
+     * <p>La llamada interna a {@link #cacheThumbnail} es self-invocation a propósito: salta el proxy,
+     * así la {@link ApiException} de storage NO marca la transacción como rollback-only (no cruza un
+     * límite {@code @Transactional}); se atrapa acá sin contaminar la tx de la cuenta.
+     */
+    @Transactional
+    public Optional<MediaAsset> cacheThumbnailQuietly(Post post, byte[] imageBytes, String contentType) {
+        try {
+            return Optional.of(cacheThumbnail(post, imageBytes, contentType));
+        } catch (ApiException e) {
+            log.warn("Miniatura best-effort no cacheada para el post {}: {}",
+                    post == null ? null : post.getId(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
     /**
      * URL para mostrar la miniatura: presigned si el backend lo soporta; si no, cae al
      * {@code remote_thumbnail_url} del post. v1 simple.

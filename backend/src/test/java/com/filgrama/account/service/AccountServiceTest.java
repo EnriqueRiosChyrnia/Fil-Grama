@@ -22,6 +22,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpStatus;
+
+import com.filgrama.account.event.AccountConnectedEvent;
 
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
@@ -56,6 +60,7 @@ class AccountServiceTest {
     @Mock SocialAccountRepository accountRepo;
     @Mock AccountCredentialRepository credentialRepo;
     @Mock ClientRepository clientRepo;
+    @Mock ApplicationEventPublisher events;
 
     private final TokenCipher cipher = new TokenCipher("MjciXevgsHmpyP3wf6vOZRS17GPYQGc7EJwFbeuW9YM=");
     private OAuthStateService stateService;
@@ -66,7 +71,7 @@ class AccountServiceTest {
         stateService = new OAuthStateService(STATE_SECRET, 600L);
         OAuthProviderRegistry registry = new OAuthProviderRegistry(List.of(new MockOAuthProvider()));
         service = new AccountService(accountRepo, credentialRepo, clientRepo, registry,
-                stateService, cipher, new OAuthProperties());
+                stateService, cipher, new OAuthProperties(), events);
     }
 
     @Test
@@ -167,6 +172,114 @@ class AccountServiceTest {
         verify(accountRepo, never()).save(any());
     }
 
+    // ---- TAREA A: scan al conectar dispara el evento ----
+
+    @Test
+    void callbackExitosoPublicaAccountConnectedEvent() {
+        when(accountRepo.findByPlatformAndExternalAccountId(eq(Platform.TIKTOK), anyString()))
+                .thenReturn(Optional.empty());
+        when(accountRepo.save(any())).thenAnswer(inv -> {
+            SocialAccount a = inv.getArgument(0);
+            a.setId(10L);
+            return a;
+        });
+        when(credentialRepo.findById(10L)).thenReturn(Optional.empty());
+
+        String state = stateService.issue(1L, Platform.TIKTOK, 7L);
+        service.completeCallback("tiktok", "good-code", state);
+
+        verify(events).publishEvent(new AccountConnectedEvent(10L));
+    }
+
+    @Test
+    void callbackUnsupportedNoPublicaEvento() {
+        when(accountRepo.findByPlatformAndExternalAccountId(eq(Platform.INSTAGRAM), anyString()))
+                .thenReturn(Optional.empty());
+        when(accountRepo.save(any())).thenAnswer(inv -> {
+            SocialAccount a = inv.getArgument(0);
+            a.setId(11L);
+            return a;
+        });
+
+        String state = stateService.issue(1L, Platform.INSTAGRAM, 7L);
+        service.completeCallback("instagram", "personal-1", state);
+
+        verify(events, never()).publishEvent(any());
+    }
+
+    // ---- TAREA B: guard de reconexión (open_id esperado) ----
+
+    @Test
+    void reconnectMismatchRechazaConflictSinLinkearNiPublicar() {
+        // Cuenta conocida que se quiere reconectar (open_id "open-A").
+        SocialAccount expected = new SocialAccount();
+        expected.setId(20L);
+        expected.setClientId(1L);
+        expected.setPlatform(Platform.TIKTOK);
+        expected.setExternalAccountId("open-A");
+        expected.setHandle("@cuentaA");
+        when(clientRepo.existsById(1L)).thenReturn(true);
+        when(accountRepo.findById(20L)).thenReturn(Optional.of(expected));
+        // Para el mensaje legible @X.
+        when(accountRepo.findByPlatformAndExternalAccountId(Platform.TIKTOK, "open-A"))
+                .thenReturn(Optional.of(expected));
+
+        ConnectResponse resp = service.connect(1L, "tiktok", 7L, 20L);
+        // El navegador autoriza OTRA cuenta: "code-B" da un open_id distinto en el mock.
+        String state = resp.state();
+
+        assertThatThrownBy(() -> service.completeCallback("tiktok", "code-B", state))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT))
+                .hasMessageContaining("@cuentaA")
+                .hasMessageContaining("TikTok");
+
+        // No linkea, no duplica, no dispara scan.
+        verify(accountRepo, never()).save(any());
+        verify(credentialRepo, never()).save(any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void reconnectMismaCuentaSiLinkeaYPublica() {
+        // open_id que el mock devolverá para "good-code" en TikTok (determinista).
+        String openId = "mock-tiktok-" + Integer.toHexString("good-code".hashCode());
+        SocialAccount existing = new SocialAccount();
+        existing.setId(30L);
+        existing.setClientId(1L);
+        existing.setPlatform(Platform.TIKTOK);
+        existing.setExternalAccountId(openId);
+        existing.setHandle("@misma");
+        when(clientRepo.existsById(1L)).thenReturn(true);
+        when(accountRepo.findById(30L)).thenReturn(Optional.of(existing));
+        when(accountRepo.findByPlatformAndExternalAccountId(Platform.TIKTOK, openId))
+                .thenReturn(Optional.of(existing));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(credentialRepo.findById(30L)).thenReturn(Optional.empty());
+
+        ConnectResponse resp = service.connect(1L, "tiktok", 7L, 30L);
+        String target = service.completeCallback("tiktok", "good-code", resp.state());
+
+        assertThat(target).contains("accountId=30");
+        verify(accountRepo).save(any());
+        verify(credentialRepo).save(any());
+        verify(events).publishEvent(new AccountConnectedEvent(30L));
+    }
+
+    @Test
+    void connectReconnectCuentaDeOtroClienteRechaza() {
+        SocialAccount otherClient = new SocialAccount();
+        otherClient.setId(40L);
+        otherClient.setClientId(999L); // no es el cliente 1
+        otherClient.setPlatform(Platform.TIKTOK);
+        otherClient.setExternalAccountId("open-x");
+        when(clientRepo.existsById(1L)).thenReturn(true);
+        when(accountRepo.findById(40L)).thenReturn(Optional.of(otherClient));
+
+        assertThatThrownBy(() -> service.connect(1L, "tiktok", 7L, 40L))
+                .isInstanceOf(ApiException.class);
+    }
+
     @Test
     void disconnectSetsStatusDisconnected() {
         SocialAccount acc = new SocialAccount();
@@ -191,7 +304,7 @@ class AccountServiceTest {
         // TAREA A: el refresh/sync corrige el nombre de cuentas viejas (ej. account 17) sin reconectar.
         AccountService svc = new AccountService(accountRepo, credentialRepo, clientRepo,
                 new OAuthProviderRegistry(List.of(new ProfileFakeProvider())),
-                stateService, cipher, new OAuthProperties());
+                stateService, cipher, new OAuthProperties(), events);
 
         SocialAccount account = new SocialAccount();
         account.setId(17L);

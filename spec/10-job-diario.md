@@ -29,10 +29,22 @@ como snapshots históricos. Es el corazón del producto: las APIs no dan histori
 3. **Guardar el payload crudo** en `raw_api_payloads` (jsonb). [[02-modelo-de-datos]]
 4. **Derivar e insertar** filas en `account_metric_snapshots` / `post_metric_snapshots`.
 5. **Upsert de `posts`** (metadatos) por `UNIQUE(account_id, external_post_id)` — sin duplicar.
-6. Registrar resultado en `sync_account_results`.
+6. **Cachear miniaturas** en `media_assets`: bajar `remote_thumbnail_url` → `StoragePort` → fila
+   `THUMBNAIL`. **Best-effort** (un fallo de red/storage NO aborta la captura ya hecha de la cuenta:
+   corre en la misma tx pero traga el error sin marcar rollback) e **idempotente** (no re-baja si el
+   post ya tiene miniatura). Aplica a posts del feed **y** stories; así el reporte muestra miniaturas
+   reales (no solo el `remote_thumbnail_url` que puede expirar). [[02-modelo-de-datos]]
+7. Registrar resultado en `sync_account_results`.
 
 Si una cuenta falla, se registra `ERROR`, **el job sigue con las demás** y la corrida termina
 `PARTIAL`. Nunca un fallo individual tumba la corrida completa.
+
+## Escaneo al conectar (sync por-cuenta)
+
+Además de la corrida diaria, hay un **sync de una sola cuenta** que se dispara tras un connect OAuth
+exitoso (mismo pipeline por-cuenta, una corrida de 1 cuenta). Lo lanza un evento `AFTER_COMMIT` del
+callback, **asíncrono** (pool del job) y **best-effort**: si el scan falla, la cuenta queda conectada
+igual. Trae posts + métricas + miniaturas al instante, sin esperar al job diario. [[09-flujo-oauth]]
 
 ## Idempotencia (clave)
 

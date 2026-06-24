@@ -183,7 +183,7 @@ class SyncJobIntegrationTest extends SyncTestSupport {
     }
 
     @Test
-    void tiktok_captura_cuenta_y_videos_sin_stories_ni_miniaturas() {
+    void tiktok_captura_cuenta_y_videos_con_miniatura_y_sin_stories() {
         var client = newClient("America/Asuncion");
         SocialAccount account = connectAccount(client.getId(), Platform.TIKTOK, "tiktok_acct");
 
@@ -194,6 +194,69 @@ class SyncJobIntegrationTest extends SyncTestSupport {
         assertThat(postRepository.findByAccountId(account.getId()))
                 .noneMatch(Post::isEphemeral);
         assertThat(countPostSnapshots(account.getId())).isEqualTo(8);      // 4 métricas * 2 videos
-        assertThat(mediaAssetRepository.count()).isZero();                 // TikTok no cachea stories
+        // TAREA F: cada video cachea su miniatura (remote_thumbnail_url → storage); sin stories.
+        assertThat(mediaAssetRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void cachea_miniatura_real_de_posts_normales_y_es_idempotente() {
+        // TAREA F: el sync baja remote_thumbnail_url → media_assets para los posts del feed (no solo stories).
+        var client = newClient("America/Asuncion");
+        SocialAccount account = connectAccount(client.getId(), Platform.INSTAGRAM, "thumbs_ig");
+
+        syncService.runOnce();
+
+        // Los 2 posts normales del feed tienen miniatura cacheada con bytes reales.
+        String p1 = account.getExternalAccountId() + "-p1";
+        Post post1 = postRepository.findByAccountIdAndExternalPostId(account.getId(), p1).orElseThrow();
+        assertThat(post1.isEphemeral()).isFalse();
+        List<com.filgrama.domain.MediaAsset> p1Assets = mediaAssetRepository.findByPostId(post1.getId());
+        assertThat(p1Assets).hasSize(1);
+        assertThat(p1Assets.get(0).getContentType()).isEqualTo("image/jpeg");
+        assertThat(p1Assets.get(0).getBytes()).isPositive();
+        assertThat(p1Assets.get(0).getPurgeAfter()).isNull(); // post normal: no se purga como story
+
+        // 2 posts normales + 1 story = 3 miniaturas en total.
+        assertThat(mediaAssetRepository.count()).isEqualTo(3);
+
+        // Re-run el mismo día NO re-descarga ni duplica miniaturas.
+        mockProvider.setSeed(2_000L);
+        syncService.runOnce();
+        assertThat(mediaAssetRepository.findByPostId(post1.getId())).hasSize(1);
+        assertThat(mediaAssetRepository.count()).isEqualTo(3);
+    }
+
+    // ---- TAREA A: sync por-cuenta (scan al conectar) ----
+
+    @Test
+    void syncAccountNow_sincroniza_una_sola_cuenta() {
+        var client = newClient("America/Asuncion");
+        SocialAccount account = connectAccount(client.getId(), Platform.INSTAGRAM, "scan_ig");
+
+        Long runId = syncService.syncAccountNow(account);
+
+        SyncRun run = syncRunRepository.findById(runId).orElseThrow();
+        assertThat(run.getStatus()).isEqualTo(SyncRunStatus.SUCCESS);
+        assertThat(run.getAccountsTotal()).isEqualTo(1);
+        assertThat(run.getAccountsOk()).isEqualTo(1);
+        // Trajo posts + métricas + miniaturas al instante.
+        assertThat(postRepository.findByAccountId(account.getId())).hasSize(3);
+        assertThat(countAccountSnapshots(account.getId())).isEqualTo(5);
+        assertThat(mediaAssetRepository.count()).isEqualTo(3);
+    }
+
+    @Test
+    void syncAccountNow_bestEffort_no_relanza_si_la_cuenta_falla() {
+        var client = newClient("America/Asuncion");
+        SocialAccount bad = connectAccount(client.getId(), Platform.INSTAGRAM, "boom_ig"); // sentinela de fallo
+
+        Long runId = syncService.syncAccountNow(bad); // NO debe lanzar
+
+        SyncRun run = syncRunRepository.findById(runId).orElseThrow();
+        assertThat(run.getStatus()).isEqualTo(SyncRunStatus.PARTIAL);
+        assertThat(run.getAccountsFailed()).isEqualTo(1);
+        List<SyncAccountResult> results = syncAccountResultRepository.findByRunId(runId);
+        assertThat(results).hasSize(1);
+        assertThat(results.get(0).getStatus()).isEqualTo(SyncAccountStatus.ERROR);
     }
 }

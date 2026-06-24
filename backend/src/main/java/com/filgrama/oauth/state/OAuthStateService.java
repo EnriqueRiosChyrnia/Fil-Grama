@@ -55,8 +55,16 @@ public class OAuthStateService {
         this.ttlSeconds = ttlSeconds;
     }
 
-    /** Emite un {@code state} firmado con TTL corto. */
+    /** Emite un {@code state} firmado con TTL corto (connect nuevo, sin cuenta esperada). */
     public String issue(Long clientId, Platform platform, Long userId) {
+        return issue(clientId, platform, userId, null);
+    }
+
+    /**
+     * Emite un {@code state} firmado con TTL corto. {@code expectedExternalAccountId} no nulo marca
+     * una <b>reconexión</b>: el callback exigirá que el open_id devuelto coincida (TAREA B).
+     */
+    public String issue(Long clientId, Platform platform, Long userId, String expectedExternalAccountId) {
         purgeExpired();
         Instant now = Instant.now();
         return Jwts.builder()
@@ -64,6 +72,7 @@ public class OAuthStateService {
                 .claim("clientId", clientId)
                 .claim("platform", platform.name())
                 .claim("userId", userId)
+                .claim("expectedExt", expectedExternalAccountId)
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key)
@@ -103,7 +112,8 @@ public class OAuthStateService {
         Long clientId = rawClient == null ? null : ((Number) rawClient).longValue();
         Long userId = rawUser == null ? null : ((Number) rawUser).longValue();
         Platform platform = Platform.valueOf(claims.get("platform", String.class));
-        return new OAuthState(clientId, platform, userId, nonce);
+        String expectedExt = claims.get("expectedExt", String.class);
+        return new OAuthState(clientId, platform, userId, nonce, expectedExt);
     }
 
     private void purgeExpired() {
