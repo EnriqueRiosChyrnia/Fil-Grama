@@ -241,6 +241,9 @@ class ReportFlowIntegrationTest {
                 .andReturn();
 
         assertThat(dl.getResponse().getContentType()).startsWith("text/markdown");
+        // Filename de descarga: slug del cliente + tipo + rango (TAREA E).
+        assertThat(dl.getResponse().getHeader("Content-Disposition"))
+                .contains("reporte-molinos-del-sur-summary-2026-05-01_a_2026-05-31.md");
         String md = dl.getResponse().getContentAsString(StandardCharsets.UTF_8);
         // Refleja período/redes/tipo y los KPIs reales; sin IA → sin "Análisis del mes".
         assertThat(md).contains("2026-05-01 a 2026-05-31").contains("INSTAGRAM").contains("KPIs por red");
@@ -400,6 +403,62 @@ class ReportFlowIntegrationTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.postGroups").isArray());
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // TAREA C — reporte por CUENTA (accountIds): se arma SÓLO con esas cuentas (multi-tenant)
+    // ---------------------------------------------------------------------------------------------
+
+    /** Con accountIds el reporte se restringe a esas cuentas: no mezcla posts de otras cuentas del cliente. */
+    @Test
+    void previewWithAccountIdsScopesToThoseAccounts() throws Exception {
+        // Segunda cuenta IG del MISMO cliente, con su propio post (no debe aparecer al filtrar por la otra).
+        SocialAccount ig2 = new SocialAccount();
+        ig2.setClientId(clientId);
+        ig2.setPlatform(Platform.INSTAGRAM);
+        ig2.setExternalAccountId("ig2-" + clientId);
+        ig2.setHandle("@molinos2");
+        ig2.setConnectedAt(Instant.now());
+        Long ig2Id = accounts.save(ig2).getId();
+        Long reelC = newPost(ig2Id, PostType.REEL, "reelC", Instant.parse("2026-05-22T10:00:00Z"));
+        postSnapshot(ig2Id, reelC, "ig_post_reach", "5000", LocalDate.parse("2026-05-23"));
+
+        String body = """
+                { "reportType":"EXTENDED", "from":"2026-05-01", "to":"2026-05-31",
+                  "accountIds":[%d], "rankBy":"reach" }
+                """.formatted(ig2Id);
+
+        mvc.perform(post("/api/v1/clients/{c}/reports:preview", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.platforms[0]").value("INSTAGRAM"))
+                .andExpect(jsonPath("$.platforms.length()").value(1))
+                // Sólo el post de la cuenta pedida; los 3 de la cuenta original quedan fuera.
+                .andExpect(jsonPath("$.topPosts.length()").value(1))
+                .andExpect(jsonPath("$.topPosts[0].id").value(reelC))
+                .andExpect(jsonPath("$.topPosts[0].metricValue").value(5000));
+    }
+
+    /** Multi-tenant: pedir una cuenta de OTRO cliente bajo este cliente → 404 (no fuga entre tenants). */
+    @Test
+    void reportWithAccountOfAnotherClientIsNotFound() throws Exception {
+        SocialAccount foreign = new SocialAccount();
+        foreign.setClientId(otherClientId);
+        foreign.setPlatform(Platform.INSTAGRAM);
+        foreign.setExternalAccountId("ig-foreign");
+        foreign.setConnectedAt(Instant.now());
+        Long foreignId = accounts.save(foreign).getId();
+
+        String body = """
+                { "reportType":"SUMMARY", "format":"MARKDOWN", "from":"2026-05-01", "to":"2026-05-31",
+                  "accountIds":[%d], "rankBy":"reach" }
+                """.formatted(foreignId);
+
+        mvc.perform(post("/api/v1/clients/{c}/reports", clientId)
+                        .header("Authorization", "Bearer " + token())
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isNotFound());
     }
 
     /** /v3/api-docs (fuente del codegen orval del front) debe exponer el path y los schemas de :preview. */

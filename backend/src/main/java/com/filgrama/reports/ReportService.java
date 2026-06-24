@@ -1,10 +1,13 @@
 package com.filgrama.reports;
 
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 
+import com.filgrama.domain.Client;
 import com.filgrama.error.ApiException;
 import com.filgrama.reports.data.ReportData;
 import com.filgrama.reports.data.ReportDataAssembler;
@@ -12,6 +15,7 @@ import com.filgrama.reports.render.MarkdownRenderer;
 import com.filgrama.reports.render.PdfRenderer;
 import com.filgrama.reports.web.GenerateReportRequest;
 import com.filgrama.reports.web.PreviewReportRequest;
+import com.filgrama.repository.ClientRepository;
 import com.filgrama.storage.StorageException;
 import com.filgrama.storage.StoragePort;
 import com.filgrama.storage.StoredObject;
@@ -35,17 +39,20 @@ public class ReportService {
     private final MarkdownRenderer markdownRenderer;
     private final PdfRenderer pdfRenderer;
     private final StoragePort storage;
+    private final ClientRepository clientRepository;
 
     public ReportService(ReportRepository reportRepository,
                          ReportDataAssembler assembler,
                          MarkdownRenderer markdownRenderer,
                          PdfRenderer pdfRenderer,
-                         StoragePort storage) {
+                         StoragePort storage,
+                         ClientRepository clientRepository) {
         this.reportRepository = reportRepository;
         this.assembler = assembler;
         this.markdownRenderer = markdownRenderer;
         this.pdfRenderer = pdfRenderer;
         this.storage = storage;
+        this.clientRepository = clientRepository;
     }
 
     /** Archivo listo para servir en la descarga. */
@@ -59,7 +66,7 @@ public class ReportService {
      */
     public Report generate(Long clientId, GenerateReportRequest request, Long userId) {
         ReportData data = buildReportData(clientId, request.reportType(), request.format(),
-                request.from(), request.to(), request.platforms(), request.rankBy());
+                request.from(), request.to(), request.platforms(), request.accountIds(), request.rankBy());
 
         Report report = new Report();
         report.setClientId(clientId);
@@ -100,9 +107,10 @@ public class ReportService {
      * la vista previa ({@code :preview}) → ambos salen del MISMO armado, sin divergencias.
      */
     public ReportData buildReportData(Long clientId, ReportType reportType, ReportFormat format,
-                                      LocalDate from, LocalDate to, List<String> platforms, String rankBy) {
+                                      LocalDate from, LocalDate to, List<String> platforms,
+                                      List<Long> accountIds, String rankBy) {
         try {
-            return assembler.assemble(clientId, reportType, format, from, to, platforms, rankBy);
+            return assembler.assemble(clientId, reportType, format, from, to, platforms, accountIds, rankBy);
         } catch (ApiException e) {
             throw e; // 404/400/422 de validación: contrato, pasan sin tocar.
         } catch (RuntimeException e) {
@@ -119,7 +127,7 @@ public class ReportService {
      */
     public ReportData preview(Long clientId, PreviewReportRequest request) {
         return buildReportData(clientId, request.reportType(), null,
-                request.from(), request.to(), request.platforms(), request.rankBy());
+                request.from(), request.to(), request.platforms(), request.accountIds(), request.rankBy());
     }
 
     /** Metadatos del reporte del cliente (404 si no existe o es de otro cliente). */
@@ -142,8 +150,35 @@ public class ReportService {
             log.warn("No se pudo leer el archivo del reporte {}: {}", reportId, e.getMessage());
             throw ApiException.notFound("El archivo del reporte %d no está disponible".formatted(reportId));
         }
-        String filename = "reporte-%d.%s".formatted(reportId, report.getFormat().extension());
-        return new DownloadPayload(content, report.getFormat().contentType(), filename);
+        return new DownloadPayload(content, report.getFormat().contentType(), downloadFilename(clientId, report));
+    }
+
+    /**
+     * Nombre de archivo descriptivo de la descarga: {@code reporte-<cliente>-<tipo>-<from>_a_<to>.<ext>}
+     * (ej. {@code reporte-tiktok-prueba-summary-2026-03-27_a_2026-06-24.pdf}). El slug del nombre del
+     * cliente lo hace reconocible en la carpeta de Descargas; el título DENTRO del reporte ya trae el
+     * nombre completo. Las fechas son ISO ({@code yyyy-MM-dd}) del rango persistido en la fila.
+     */
+    private String downloadFilename(Long clientId, Report report) {
+        String clientName = clientRepository.findById(clientId).map(Client::getName).orElse(null);
+        return "reporte-%s-%s-%s_a_%s.%s".formatted(
+                slug(clientName),
+                report.getReportType().name().toLowerCase(Locale.ROOT),
+                report.getPeriodFrom(),
+                report.getPeriodTo(),
+                report.getFormat().extension());
+    }
+
+    /** Slug ASCII seguro para nombre de archivo: minúsculas, sin acentos, separadores → {@code -}. */
+    private static String slug(String value) {
+        if (value == null || value.isBlank()) {
+            return "cliente";
+        }
+        String ascii = Normalizer.normalize(value, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        String slug = ascii.toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-+|-+$)", "");
+        return slug.isBlank() ? "cliente" : slug;
     }
 
     private byte[] renderContent(ReportFormat format, ReportData data) {

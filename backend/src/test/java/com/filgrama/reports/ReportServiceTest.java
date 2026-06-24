@@ -20,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import com.filgrama.domain.Client;
 import com.filgrama.error.ApiException;
 import com.filgrama.reports.ReportService.DownloadPayload;
 import com.filgrama.reports.data.ReportData;
@@ -29,6 +30,7 @@ import com.filgrama.reports.render.MarkdownRenderer;
 import com.filgrama.reports.render.PdfRenderer;
 import com.filgrama.reports.web.GenerateReportRequest;
 import com.filgrama.reports.web.PreviewReportRequest;
+import com.filgrama.repository.ClientRepository;
 import com.filgrama.storage.StoragePort;
 import com.filgrama.storage.StoredObject;
 
@@ -44,6 +46,7 @@ class ReportServiceTest {
     private MarkdownRenderer markdown;
     private PdfRenderer pdf;
     private StoragePort storage;
+    private ClientRepository clients;
     private ReportService service;
 
     @BeforeEach
@@ -53,7 +56,8 @@ class ReportServiceTest {
         markdown = mock(MarkdownRenderer.class);
         pdf = mock(PdfRenderer.class);
         storage = mock(StoragePort.class);
-        service = new ReportService(repo, assembler, markdown, pdf, storage);
+        clients = mock(ClientRepository.class);
+        service = new ReportService(repo, assembler, markdown, pdf, storage, clients);
 
         // save() asigna id la primera vez y devuelve la misma entidad (como Spring Data).
         when(repo.save(any(Report.class))).thenAnswer(inv -> {
@@ -77,9 +81,10 @@ class ReportServiceTest {
     @Test
     void generateSummaryMarkdownStoresFileAndMarksCompleted() {
         GenerateReportRequest req = new GenerateReportRequest(
-                ReportType.SUMMARY, ReportFormat.MARKDOWN, FROM, TO, List.of("INSTAGRAM"), "reach");
+                ReportType.SUMMARY, ReportFormat.MARKDOWN, FROM, TO, List.of("INSTAGRAM"), null, "reach");
         when(assembler.assemble(eq(CLIENT), eq(ReportType.SUMMARY), eq(ReportFormat.MARKDOWN),
-                eq(FROM), eq(TO), any(), eq("reach"))).thenReturn(data(ReportType.SUMMARY, ReportFormat.MARKDOWN));
+                eq(FROM), eq(TO), any(), any(), eq("reach")))
+                .thenReturn(data(ReportType.SUMMARY, ReportFormat.MARKDOWN));
         when(markdown.render(any())).thenReturn("# Reporte\n");
         when(storage.put(anyString(), any(), anyString()))
                 .thenAnswer(inv -> new StoredObject(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
@@ -101,8 +106,8 @@ class ReportServiceTest {
     @Test
     void generateMarksFailedAndRethrowsWhenRenderFails() {
         GenerateReportRequest req = new GenerateReportRequest(
-                ReportType.EXTENDED, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), "reach");
-        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                ReportType.EXTENDED, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), null, "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(data(ReportType.EXTENDED, ReportFormat.PDF));
         when(pdf.render(any())).thenThrow(ApiException.unprocessable("boom"));
 
@@ -120,8 +125,8 @@ class ReportServiceTest {
         // assemble() corre ANTES del try/catch: una RuntimeException que NO sea ApiException (p. ej.
         // storage caído al resolver una miniatura) escapaba como 500 crudo. Debe mapear a ApiException.
         GenerateReportRequest req = new GenerateReportRequest(
-                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), "reach");
-        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), null, "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("MinIO unreachable: Connection refused"));
 
         assertThatThrownBy(() -> service.generate(CLIENT, req, 3L))
@@ -136,8 +141,8 @@ class ReportServiceTest {
     void assembleApiExceptionIsPropagatedUnchanged() {
         // Las validaciones de assemble (404 cliente, 400 rango, 422 rankBy) deben pasar tal cual.
         GenerateReportRequest req = new GenerateReportRequest(
-                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), "reach");
-        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                ReportType.SUMMARY, ReportFormat.PDF, FROM, TO, List.of("INSTAGRAM"), null, "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(ApiException.notFound("Client %d not found".formatted(CLIENT)));
 
         assertThatThrownBy(() -> service.generate(CLIENT, req, 3L))
@@ -152,11 +157,11 @@ class ReportServiceTest {
     @Test
     void previewReturnsAssembledDataWithoutPersisting() {
         PreviewReportRequest req = new PreviewReportRequest(
-                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), null, "reach");
         ReportData expected = data(ReportType.SUMMARY, null);
         // preview no exporta: no hay format. assemble se invoca con format == null.
         when(assembler.assemble(eq(CLIENT), eq(ReportType.SUMMARY), isNull(),
-                eq(FROM), eq(TO), any(), eq("reach"))).thenReturn(expected);
+                eq(FROM), eq(TO), any(), any(), eq("reach"))).thenReturn(expected);
 
         ReportData result = service.preview(CLIENT, req);
 
@@ -169,8 +174,8 @@ class ReportServiceTest {
     @Test
     void previewPropagatesValidationApiException() {
         PreviewReportRequest req = new PreviewReportRequest(
-                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
-        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), null, "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(ApiException.notFound("Client %d not found".formatted(CLIENT)));
 
         assertThatThrownBy(() -> service.preview(CLIENT, req))
@@ -181,8 +186,8 @@ class ReportServiceTest {
     @Test
     void previewMapsUnexpectedFailureToApiExceptionNeverRaw500() {
         PreviewReportRequest req = new PreviewReportRequest(
-                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), "reach");
-        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any()))
+                ReportType.SUMMARY, FROM, TO, List.of("INSTAGRAM"), null, "reach");
+        when(assembler.assemble(any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenThrow(new RuntimeException("MinIO unreachable"));
 
         assertThatThrownBy(() -> service.preview(CLIENT, req))
@@ -204,16 +209,48 @@ class ReportServiceTest {
         Report report = new Report();
         report.setId(55L);
         report.setClientId(CLIENT);
+        report.setReportType(ReportType.SUMMARY);
         report.setFormat(ReportFormat.PDF);
         report.setStatus(ReportStatus.COMPLETED);
+        report.setPeriodFrom(LocalDate.parse("2026-03-27"));
+        report.setPeriodTo(LocalDate.parse("2026-06-24"));
         report.setStoragePath("reports/9/55.pdf");
         when(repo.findByIdAndClientId(55L, CLIENT)).thenReturn(Optional.of(report));
         when(storage.get("reports/9/55.pdf")).thenReturn("%PDF-1.7".getBytes(StandardCharsets.ISO_8859_1));
+        when(clients.findById(CLIENT)).thenReturn(Optional.of(client("TikTok Prueba")));
 
         DownloadPayload payload = service.download(CLIENT, 55L);
 
         assertThat(payload.contentType()).isEqualTo("application/pdf");
-        assertThat(payload.filename()).isEqualTo("reporte-55.pdf");
+        // Filename con slug del cliente + tipo + rango (el título DENTRO del reporte ya trae el nombre).
+        assertThat(payload.filename())
+                .isEqualTo("reporte-tiktok-prueba-summary-2026-03-27_a_2026-06-24.pdf");
         assertThat(payload.content()).isNotEmpty();
+    }
+
+    @Test
+    void downloadFilenameSlugStripsAccentsAndSymbols() {
+        Report report = new Report();
+        report.setId(7L);
+        report.setClientId(CLIENT);
+        report.setReportType(ReportType.EXTENDED);
+        report.setFormat(ReportFormat.MARKDOWN);
+        report.setStatus(ReportStatus.COMPLETED);
+        report.setPeriodFrom(LocalDate.parse("2026-05-01"));
+        report.setPeriodTo(LocalDate.parse("2026-05-31"));
+        report.setStoragePath("reports/9/7.md");
+        when(repo.findByIdAndClientId(7L, CLIENT)).thenReturn(Optional.of(report));
+        when(storage.get("reports/9/7.md")).thenReturn("# Reporte".getBytes(StandardCharsets.UTF_8));
+        when(clients.findById(CLIENT)).thenReturn(Optional.of(client("Café & Té  São Paulo!")));
+
+        assertThat(service.download(CLIENT, 7L).filename())
+                .isEqualTo("reporte-cafe-te-sao-paulo-extended-2026-05-01_a_2026-05-31.md");
+    }
+
+    private static Client client(String name) {
+        Client c = new Client();
+        c.setId(CLIENT);
+        c.setName(name);
+        return c;
     }
 }
