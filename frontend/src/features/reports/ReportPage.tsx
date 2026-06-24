@@ -66,16 +66,34 @@ function trendStyle(up: boolean, size: number): CSSProperties {
   return { fontSize: size, fontWeight: 500, marginTop: 3, color: up ? 'var(--fg-primary)' : 'var(--fg-text-tertiary)' };
 }
 
-/** Variación absoluta (misma unidad que el valor): "▲ 1,2k" / "▼ 320". */
-function TrendNum({ delta, unit, size = 12 }: { delta?: number; unit?: string | null; size?: number }) {
-  if (delta == null || delta === 0) return null;
+/**
+ * "Sin comparación": no hay período anterior (cuenta nueva) → el delta llegó null.
+ * null ≠ 0. Nunca mostramos ▲0 ni el valor como si fuera ganancia; sólo avisamos
+ * que no hay con qué comparar. El valor en sí siempre se muestra aparte.
+ */
+function NoComparison({ size = 12 }: { size?: number }) {
+  return (
+    <div
+      title="No hay un período anterior con que comparar"
+      style={{ fontSize: size, fontWeight: 500, marginTop: 3, color: 'var(--fg-text-tertiary)' }}
+    >
+      — sin comparación
+    </div>
+  );
+}
+
+/** Variación absoluta (misma unidad que el valor): "▲ 1,2k" / "▼ 320". null = sin comparación. */
+function TrendNum({ delta, unit, size = 12 }: { delta?: number | null; unit?: string | null; size?: number }) {
+  if (delta == null) return <NoComparison size={size} />;
+  if (delta === 0) return null;
   const up = delta > 0;
   return <div style={trendStyle(up, size)}>{`${up ? '▲' : '▼'} ${formatByUnit(Math.abs(delta), unit ?? undefined)}`}</div>;
 }
 
-/** Variación porcentual: "▲ 12%". */
-function TrendPct({ pct, size = 12 }: { pct?: number; size?: number }) {
-  if (pct == null || pct === 0) return null;
+/** Variación porcentual: "▲ 12%". null = sin comparación. */
+function TrendPct({ pct, size = 12 }: { pct?: number | null; size?: number }) {
+  if (pct == null) return <NoComparison size={size} />;
+  if (pct === 0) return null;
   const up = pct > 0;
   return <div style={trendStyle(up, size)}>{`${up ? '▲' : '▼'} ${formatPercent(Math.abs(pct))}`}</div>;
 }
@@ -517,11 +535,13 @@ function ReportDocument({
                   <div key={k.platform} style={{ fontSize: 12, color: 'var(--fg-text-secondary)' }}>
                     <span style={{ fontWeight: 500, color: 'var(--fg-text-primary)' }}>{networkLabel(k.platform ?? '')}</span>{' '}
                     {formatByUnit(k.reach?.current, 'count')}
-                    {k.reach?.deltaPct != null && (
+                    {k.reach?.deltaPct != null ? (
                       <span style={{ color: (k.reach.deltaPct ?? 0) >= 0 ? 'var(--fg-primary)' : 'var(--fg-text-tertiary)' }}>
                         {' '}
                         ({(k.reach.deltaPct ?? 0) >= 0 ? '▲' : '▼'} {formatPercent(Math.abs(k.reach.deltaPct ?? 0))})
                       </span>
+                    ) : (
+                      <span style={{ color: 'var(--fg-text-tertiary)' }}> (sin comparación)</span>
                     )}
                     {k.reach?.previous != null && (
                       <span style={{ color: 'var(--fg-text-tertiary)' }}> · antes {formatByUnit(k.reach.previous, 'count')}</span>
@@ -610,7 +630,7 @@ function NetworkKpiCard({ kpi }: { kpi: PlatformKpis }) {
       )}
 
       {/* derivados del contrato: engagement, crecimiento de seguidores, alcance vs anterior */}
-      {(kpi.engagementRate != null || kpi.followerGrowth != null || kpi.reach?.deltaPct != null) && (
+      {(kpi.engagementRate != null || kpi.followerGrowth != null || kpi.reach?.current != null) && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 22, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--fg-border)' }}>
           {kpi.engagementRate != null && (
             <div>
@@ -629,7 +649,7 @@ function NetworkKpiCard({ kpi }: { kpi: PlatformKpis }) {
               </div>
             </div>
           )}
-          {kpi.reach?.deltaPct != null && (
+          {kpi.reach?.current != null && (
             <div>
               <div style={{ fontSize: 11.5, color: 'var(--fg-text-secondary)' }}>Alcance vs. anterior</div>
               <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--fg-text-primary)', marginTop: 4 }}>

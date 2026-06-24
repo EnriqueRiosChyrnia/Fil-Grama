@@ -5,7 +5,7 @@ import { usePostReport, pointsForMetric } from '../accounts/metricsReport';
 import { Card, Button, NetworkChip, TrendChart, DateRangeControl, InfoTooltip } from '../../components/ui';
 import { ErrorState, LoadingState } from '../../components/layout';
 import { useCatalog } from '../../lib/catalog';
-import { computeRange, formatDate, type RangeDays } from '../../lib/format';
+import { computeRange, formatDate, WIDE_RANGES, type RangeDays } from '../../lib/format';
 import { postMetrics, anyPostMetrics } from '../accounts/catalogMetrics';
 import { PostThumb } from './PostThumb';
 import { postTypeLabel, isEphemeralType } from './postKind';
@@ -159,7 +159,7 @@ export function PostDetailPage() {
                 <span style={{ fontSize: 13, color: 'var(--fg-text-tertiary)' }}>Sin métricas en el catálogo</span>
               )}
             </div>
-            <DateRangeControl value={range} onChange={setRange} />
+            <DateRangeControl value={range} onChange={setRange} options={WIDE_RANGES} />
           </div>
 
           <Card style={{ marginTop: 14 }} padding={20}>
