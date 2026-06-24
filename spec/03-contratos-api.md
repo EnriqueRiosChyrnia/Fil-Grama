@@ -182,16 +182,32 @@ independiente. Límite v1: máx. 20 requests por batch (`400` si se excede).
 Request (de `:report` y de `:preview`, este último **sin `format`**):
 ```json
 { "reportType": "EXTENDED", "format": "PDF", "from": "2026-05-01", "to": "2026-05-31",
-  "platforms": ["INSTAGRAM","TIKTOK"], "rankBy": "reach" }
+  "platforms": ["INSTAGRAM","TIKTOK"], "accountIds": [12, 34], "rankBy": "reach" }
 ```
 `reportType` ∈ `SUMMARY` \| `EXTENDED`. `format` ∈ `MARKDOWN` \| `PDF`. `rankBy` = métrica para
 ordenar destacadas. v1 síncrono. El recurso devuelve
 `{id, reportType, status, format, downloadUrl, createdAt}`.
 
+**Alcance por RED o por CUENTA.** `platforms` y `accountIds` son **opcionales**:
+- Sin ninguno → todas las redes conectadas del cliente (comportamiento por defecto).
+- `platforms` → filtra por red (cruza todas las cuentas de esas redes del cliente).
+- `accountIds` → el reporte se arma **SÓLO con esas cuentas** (KPIs, posts, destacadas y alcance
+  restringidos a ellas); la red se **deriva** de las cuentas. Tiene **prioridad** sobre `platforms`
+  (si vienen ambos, `platforms` se ignora). Útil cuando el cliente tiene varias cuentas de la misma
+  red y se quiere reportar una en particular. Las cuentas **deben pertenecer al cliente**
+  (multi-tenant): una cuenta de otro cliente o inexistente → `404`.
+
 Errores comunes a ambos (validados al armar el `ReportData`, multi-tenant por `client_id`): cliente
-inexistente → `404`; rango inválido (`from > to`, faltantes) → `400`; `rankBy` desconocido → `422`.
-La generación es robusta: una falla inesperada al armar (p. ej. una miniatura cacheada cuyo objeto no
-está en storage) **nunca** sale como `500` crudo — se mapea a una `ApiException` controlada.
+inexistente → `404`; rango inválido (`from > to`, faltantes) → `400`; `rankBy` desconocido → `422`;
+`accountIds` con una cuenta que no es del cliente → `404`. La generación es robusta: una falla
+inesperada al armar (p. ej. una miniatura cacheada cuyo objeto no está en storage) **nunca** sale como
+`500` crudo — se mapea a una `ApiException` controlada.
+
+**Filename de la descarga.** `GET …/{reportId}/download` sirve el archivo con
+`Content-Disposition: attachment` y un nombre descriptivo `reporte-<cliente>-<tipo>-<from>_a_<to>.<ext>`
+(ej. `reporte-molinos-del-sur-summary-2026-05-01_a_2026-05-31.pdf`), donde `<cliente>` es un slug del
+nombre del cliente (minúsculas, sin acentos, separadores → `-`). El título DENTRO del reporte ya trae
+el nombre completo; esto sólo hace el archivo reconocible en la carpeta de Descargas.
 
 ### `POST /clients/{clientId}/reports:preview`
 

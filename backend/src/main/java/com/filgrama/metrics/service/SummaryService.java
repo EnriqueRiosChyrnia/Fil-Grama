@@ -4,10 +4,12 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +23,7 @@ import com.filgrama.metrics.dto.SummaryMetric;
 import com.filgrama.metrics.dto.SummaryResponse;
 import com.filgrama.metrics.repository.MetricsQueryRepository;
 import com.filgrama.metrics.repository.MetricsQueryRepository.MetricAgg;
+import com.filgrama.metrics.repository.MetricsQueryRepository.SeriesRow;
 import com.filgrama.repository.ClientRepository;
 import com.filgrama.repository.SocialAccountRepository;
 
@@ -85,23 +88,123 @@ public class SummaryService {
         return new SummaryResponse(clientId, from, to, result);
     }
 
+    /**
+     * Variante account-scoped para el <b>reporte por cuenta</b> (CU5, track Reportes): agrega SÓLO las
+     * cuentas dadas (las del cliente que estén en {@code accountIds}), agrupándolas por su red, y deriva
+     * los mismos KPIs que {@link #summary}. Reutiliza {@link MetricsQueryRepository#accountMetricSeries}
+     * (la única consulta account-scoped existente) y combina por red sumando total/último/primero por
+     * cuenta — exactamente las reglas del agregado por red de {@code accountMetricAgg}. {@code accountIds}
+     * vacío ⇒ sin redes. Multi-tenant: filtra por {@code client_id}, así una cuenta de otro cliente no
+     * aporta nada (la validación dura de pertenencia ocurre en el track Reportes, antes de llamar).
+     */
+    @Transactional(readOnly = true)
+    public SummaryResponse summaryForAccounts(Long clientId, LocalDate from, LocalDate to,
+                                              Collection<Long> accountIds) {
+        if (from != null && to != null && from.isAfter(to)) {
+            throw ApiException.badRequest("rango inválido: 'from' (%s) > 'to' (%s)".formatted(from, to));
+        }
+        if (!clientRepository.existsById(clientId)) {
+            throw ApiException.notFound("Client %d not found".formatted(clientId));
+        }
+        if (accountIds == null || accountIds.isEmpty()) {
+            return new SummaryResponse(clientId, from, to, List.of());
+        }
+
+        // Cuentas del cliente que están en el subconjunto pedido, agrupadas por red (orden estable).
+        Map<String, List<Long>> accountsByPlatform = new TreeMap<>();
+        for (SocialAccount account : accountRepository.findByClientId(clientId)) {
+            if (accountIds.contains(account.getId())) {
+                accountsByPlatform.computeIfAbsent(account.getPlatform().name(), k -> new ArrayList<>())
+                        .add(account.getId());
+            }
+        }
+
+        List<PlatformSummary> result = new ArrayList<>();
+        for (Map.Entry<String, List<Long>> entry : accountsByPlatform.entrySet()) {
+            result.add(buildPlatformSummary(clientId, entry.getKey(), entry.getValue(), from, to));
+        }
+        return new SummaryResponse(clientId, from, to, result);
+    }
+
+    /** KPIs de una red sumando TODAS las cuentas del cliente (agregado por red de {@code accountMetricAgg}). */
     private PlatformSummary buildPlatformSummary(Long clientId, String platform,
                                                  LocalDate from, LocalDate to) {
         // Una sola consulta por métrica ACCOUNT del catálogo de esa red; cache local para los derivados.
+        List<MetricCatalogItem> items = catalog.list(platform, "ACCOUNT");
         Map<String, MetricAgg> aggByKey = new LinkedHashMap<>();
+        for (MetricCatalogItem item : items) {
+            aggByKey.put(item.key(), queryRepository.accountMetricAgg(clientId, platform, item.key(), from, to));
+        }
+        return toPlatformSummary(platform, items, aggByKey);
+    }
+
+    /** KPIs de una red restringidos a un subconjunto de cuentas (reporte por cuenta). */
+    private PlatformSummary buildPlatformSummary(Long clientId, String platform, List<Long> accountIds,
+                                                 LocalDate from, LocalDate to) {
+        List<MetricCatalogItem> items = catalog.list(platform, "ACCOUNT");
+        List<String> keys = items.stream().map(MetricCatalogItem::key).toList();
+        Map<String, MetricAgg> aggByKey = aggregateAccounts(clientId, accountIds, keys, from, to);
+        return toPlatformSummary(platform, items, aggByKey);
+    }
+
+    /** Arma el {@link PlatformSummary} (métricas CORE + derivados) a partir del agregado por métrica. */
+    private PlatformSummary toPlatformSummary(String platform, List<MetricCatalogItem> items,
+                                              Map<String, MetricAgg> aggByKey) {
         List<SummaryMetric> metrics = new ArrayList<>();
-        for (MetricCatalogItem item : catalog.list(platform, "ACCOUNT")) {
-            MetricAgg agg = queryRepository.accountMetricAgg(clientId, platform, item.key(), from, to);
-            aggByKey.put(item.key(), agg);
+        for (MetricCatalogItem item : items) {
+            MetricAgg agg = aggByKey.get(item.key());
             metrics.add(new SummaryMetric(
                     item.key(), item.displayName(), item.unit(),
                     MetricFormat.clean(agg.latest()), MetricFormat.clean(agg.total())));
         }
-
         DerivedRoles roles = ROLES.get(platform);
         BigDecimal engagementRate = roles == null ? null : engagementRate(roles, aggByKey);
         BigDecimal followerGrowth = roles == null ? null : followerGrowth(roles, aggByKey);
         return new PlatformSummary(platform, metrics, engagementRate, followerGrowth);
+    }
+
+    /**
+     * Agrega cada métrica del conjunto de cuentas: por cuenta calcula total (suma de snapshots), último
+     * y primero (por {@code captured_at}), y luego suma esos por cuenta — equivalente account-scoped a
+     * {@link MetricsQueryRepository#accountMetricAgg}. Una sola query por cuenta (todas sus métricas);
+     * la serie viene ordenada por {@code (metric_key, captured_at)}, así el último elemento de cada
+     * métrica es el más reciente y el primero el más antiguo. Sin datos ⇒ ceros (mismo COALESCE que el
+     * agregado por red).
+     */
+    private Map<String, MetricAgg> aggregateAccounts(Long clientId, List<Long> accountIds,
+                                                     List<String> keys, LocalDate from, LocalDate to) {
+        Map<String, BigDecimal> totals = new LinkedHashMap<>();
+        Map<String, BigDecimal> latests = new LinkedHashMap<>();
+        Map<String, BigDecimal> earliests = new LinkedHashMap<>();
+        for (String key : keys) {
+            totals.put(key, BigDecimal.ZERO);
+            latests.put(key, BigDecimal.ZERO);
+            earliests.put(key, BigDecimal.ZERO);
+        }
+        if (!keys.isEmpty()) {
+            for (Long accountId : accountIds) {
+                Map<String, List<BigDecimal>> byMetric = new LinkedHashMap<>();
+                for (SeriesRow row : queryRepository.accountMetricSeries(clientId, accountId, keys, from, to)) {
+                    BigDecimal value = row.value() == null ? BigDecimal.ZERO : row.value();
+                    byMetric.computeIfAbsent(row.metricKey(), k -> new ArrayList<>()).add(value);
+                }
+                for (Map.Entry<String, List<BigDecimal>> e : byMetric.entrySet()) {
+                    List<BigDecimal> values = e.getValue();
+                    if (values.isEmpty() || !totals.containsKey(e.getKey())) {
+                        continue;
+                    }
+                    BigDecimal total = values.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+                    totals.merge(e.getKey(), total, BigDecimal::add);
+                    latests.merge(e.getKey(), values.get(values.size() - 1), BigDecimal::add);
+                    earliests.merge(e.getKey(), values.get(0), BigDecimal::add);
+                }
+            }
+        }
+        Map<String, MetricAgg> out = new LinkedHashMap<>();
+        for (String key : keys) {
+            out.put(key, new MetricAgg(totals.get(key), latests.get(key), earliests.get(key)));
+        }
+        return out;
     }
 
     /** interacciones(total) / alcance(total); si la red no tiene alcance, cae a seguidores(último). */

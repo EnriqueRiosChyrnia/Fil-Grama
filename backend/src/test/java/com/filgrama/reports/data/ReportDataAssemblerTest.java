@@ -1,10 +1,13 @@
 package com.filgrama.reports.data;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -17,6 +20,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.filgrama.domain.Client;
+import com.filgrama.domain.SocialAccount;
+import com.filgrama.domain.enums.Platform;
+import com.filgrama.error.ApiException;
 import com.filgrama.metrics.dto.PlatformSummary;
 import com.filgrama.metrics.dto.SummaryMetric;
 import com.filgrama.metrics.dto.SummaryResponse;
@@ -47,12 +53,13 @@ class ReportDataAssemblerTest {
 
     private SummaryService summaryService;
     private ReportQueryRepository reportQuery;
+    private SocialAccountRepository accountRepository;
     private ReportDataAssembler assembler;
 
     @BeforeEach
     void setUp() {
         ClientRepository clientRepository = mock(ClientRepository.class);
-        SocialAccountRepository accountRepository = mock(SocialAccountRepository.class);
+        accountRepository = mock(SocialAccountRepository.class);
         summaryService = mock(SummaryService.class);
         reportQuery = mock(ReportQueryRepository.class);
         RankMetricResolver rankResolver = mock(RankMetricResolver.class);
@@ -66,7 +73,7 @@ class ReportDataAssemblerTest {
         client.setTimezone("UTC");
         when(clientRepository.findById(CLIENT)).thenReturn(Optional.of(client));
         when(rankResolver.normalize(any())).thenReturn("reach");
-        when(reportQuery.findPosts(any(), any(), any(), any())).thenReturn(List.of());
+        when(reportQuery.findPosts(any(), any(), any(), any(), any())).thenReturn(List.of());
         when(reportQuery.latestPostMetrics(any(), any(), any(), any())).thenReturn(List.of());
 
         // Período actual: 150 seguidores, 931 interacciones.
@@ -80,7 +87,7 @@ class ReportDataAssemblerTest {
         when(summaryService.summary(eq(CLIENT), eq(PREV_FROM), eq(PREV_TO), isNull())).thenReturn(
                 igSummary(PREV_FROM, PREV_TO, bd(0), bd(0)));
         // ...pero NO hay snapshots de cuenta en el rango previo → sin baseline.
-        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), eq(PREV_FROM), eq(PREV_TO)))
+        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), any(), eq(PREV_FROM), eq(PREV_TO)))
                 .thenReturn(Set.of());
 
         PlatformKpis ig = assembleInstagram();
@@ -98,7 +105,7 @@ class ReportDataAssemblerTest {
     void deltaIsRealDifferenceWhenPreviousPeriodHasSnapshots() {
         when(summaryService.summary(eq(CLIENT), eq(PREV_FROM), eq(PREV_TO), isNull())).thenReturn(
                 igSummary(PREV_FROM, PREV_TO, bd(120), bd(800)));
-        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), eq(PREV_FROM), eq(PREV_TO)))
+        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), any(), eq(PREV_FROM), eq(PREV_TO)))
                 .thenReturn(Set.of(
                         new PlatformMetricKey("INSTAGRAM", "ig_followers_count"),
                         new PlatformMetricKey("INSTAGRAM", "ig_total_interactions"),
@@ -115,7 +122,7 @@ class ReportDataAssemblerTest {
         // Previo = 0 REAL (sí hay snapshot, vale 0): el delta es el valor completo, NO null.
         when(summaryService.summary(eq(CLIENT), eq(PREV_FROM), eq(PREV_TO), isNull())).thenReturn(
                 igSummary(PREV_FROM, PREV_TO, bd(0), bd(0)));
-        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), eq(PREV_FROM), eq(PREV_TO)))
+        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), any(), eq(PREV_FROM), eq(PREV_TO)))
                 .thenReturn(Set.of(
                         new PlatformMetricKey("INSTAGRAM", "ig_followers_count"),
                         new PlatformMetricKey("INSTAGRAM", "ig_total_interactions")));
@@ -126,11 +133,74 @@ class ReportDataAssemblerTest {
         assertThat(kpi(ig, "ig_total_interactions").delta()).isEqualByComparingTo("931");
     }
 
+    // ---- TAREA C: reporte por cuenta (accountIds) ----
+
+    @Test
+    void withAccountIdsUsesAccountScopedSummaryAndDerivesPlatformFromAccounts() {
+        // El cliente tiene 2 cuentas IG + 1 TIKTOK; pedimos SÓLO la cuenta IG #11.
+        when(accountRepository.findByClientId(CLIENT)).thenReturn(List.of(
+                account(11L, Platform.INSTAGRAM),
+                account(12L, Platform.INSTAGRAM),
+                account(13L, Platform.TIKTOK)));
+        when(summaryService.summaryForAccounts(eq(CLIENT), eq(FROM), eq(TO), eq(List.of(11L))))
+                .thenReturn(igSummary(FROM, TO, bd(150), bd(931)));
+        when(summaryService.summaryForAccounts(eq(CLIENT), eq(PREV_FROM), eq(PREV_TO), eq(List.of(11L))))
+                .thenReturn(igSummary(PREV_FROM, PREV_TO, bd(0), bd(0)));
+        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), eq(List.of(11L)), eq(PREV_FROM), eq(PREV_TO)))
+                .thenReturn(Set.of());
+
+        // platforms=["TIKTOK"] se IGNORA cuando vienen accountIds: la red se deriva de la cuenta.
+        ReportData data = assembler.assemble(CLIENT, ReportType.SUMMARY, ReportFormat.MARKDOWN,
+                FROM, TO, List.of("TIKTOK"), List.of(11L), "reach");
+
+        assertThat(data.platforms()).containsExactly("INSTAGRAM");
+        // KPIs account-scoped: NO se usa el summary por red (todas las cuentas).
+        verify(summaryService, never()).summary(any(), any(), any(), any());
+        verify(summaryService).summaryForAccounts(eq(CLIENT), eq(FROM), eq(TO), eq(List.of(11L)));
+        // Posts y baseline restringidos a la cuenta pedida.
+        verify(reportQuery).findPosts(eq(CLIENT), eq(FROM), eq(TO), eq(List.of("INSTAGRAM")), eq(List.of(11L)));
+    }
+
+    @Test
+    void withoutAccountIdsKeepsByNetworkBehaviour() {
+        // Sin accountIds: summary por red (no account-scoped) y queries con accountIds = null (compat).
+        when(summaryService.summary(eq(CLIENT), eq(PREV_FROM), eq(PREV_TO), isNull())).thenReturn(
+                igSummary(PREV_FROM, PREV_TO, bd(0), bd(0)));
+        when(reportQuery.accountMetricKeysPresent(eq(CLIENT), any(), isNull(), eq(PREV_FROM), eq(PREV_TO)))
+                .thenReturn(Set.of());
+
+        assembler.assemble(CLIENT, ReportType.SUMMARY, ReportFormat.MARKDOWN,
+                FROM, TO, List.of("INSTAGRAM"), null, "reach");
+
+        verify(summaryService, never()).summaryForAccounts(any(), any(), any(), any());
+        verify(summaryService).summary(eq(CLIENT), eq(FROM), eq(TO), isNull());
+        verify(reportQuery).findPosts(eq(CLIENT), eq(FROM), eq(TO), eq(List.of("INSTAGRAM")), isNull());
+    }
+
+    @Test
+    void accountIdOfAnotherClientIsNotFound() {
+        // Multi-tenant: una cuenta que no es del cliente → 404 (no se filtra silenciosamente).
+        when(accountRepository.findByClientId(CLIENT)).thenReturn(List.of(account(11L, Platform.INSTAGRAM)));
+
+        assertThatThrownBy(() -> assembler.assemble(CLIENT, ReportType.SUMMARY, ReportFormat.MARKDOWN,
+                FROM, TO, null, List.of(999L), "reach"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus().value()).isEqualTo(404));
+    }
+
     // ---- helpers ----
+
+    private static SocialAccount account(Long id, Platform platform) {
+        SocialAccount a = new SocialAccount();
+        a.setId(id);
+        a.setClientId(CLIENT);
+        a.setPlatform(platform);
+        return a;
+    }
 
     private PlatformKpis assembleInstagram() {
         ReportData data = assembler.assemble(CLIENT, ReportType.SUMMARY, ReportFormat.MARKDOWN,
-                FROM, TO, List.of("INSTAGRAM"), "reach");
+                FROM, TO, List.of("INSTAGRAM"), null, "reach");
         return data.kpis().stream().filter(k -> k.platform().equals("INSTAGRAM")).findFirst().orElseThrow();
     }
 

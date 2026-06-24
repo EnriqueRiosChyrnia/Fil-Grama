@@ -91,27 +91,32 @@ public class ReportDataAssembler {
 
     @Transactional(readOnly = true)
     public ReportData assemble(Long clientId, ReportType type, ReportFormat format,
-                               LocalDate from, LocalDate to, List<String> requestedPlatforms, String rankBy) {
+                               LocalDate from, LocalDate to, List<String> requestedPlatforms,
+                               List<Long> requestedAccountIds, String rankBy) {
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> ApiException.notFound("Client %d not found".formatted(clientId)));
         validateRange(from, to);
         rankResolver.validate(rankBy);
         String normalizedRankBy = rankResolver.normalize(rankBy);
 
-        List<String> platforms = resolvePlatforms(clientId, requestedPlatforms);
+        // Alcance del reporte: por CUENTA (accountIds, derivando la red) o por RED (compat). En el
+        // modo por cuenta, accountIds != null y todas las queries se restringen a esas cuentas.
+        Scope scope = resolveScope(clientId, requestedPlatforms, requestedAccountIds);
+        List<String> platforms = scope.platforms();
+        List<Long> accountIds = scope.accountIds();
         ZoneId zone = clientZone(client);
 
         // ---- KPIs por red + deltas vs período anterior (servicios del track D) ----
         Period period = previousPeriod(from, to);
-        SummaryResponse current = summaryService.summary(clientId, from, to, null);
-        SummaryResponse previous = summaryService.summary(clientId, period.previousFrom(), period.previousTo(), null);
+        SummaryResponse current = summary(clientId, from, to, accountIds);
+        SummaryResponse previous = summary(clientId, period.previousFrom(), period.previousTo(), accountIds);
         // Qué métricas tienen baseline real en el período anterior (distingue "previo ausente" de "previo = 0").
         Set<PlatformMetricKey> prevBaseline = reportQuery.accountMetricKeysPresent(
-                clientId, platforms, period.previousFrom(), period.previousTo());
+                clientId, platforms, accountIds, period.previousFrom(), period.previousTo());
         List<PlatformKpis> kpis = buildKpis(platforms, current, previous, prevBaseline);
 
         // ---- Posts del cliente en el período (query propia de reporte) ----
-        List<PostRow> rows = reportQuery.findPosts(clientId, from, to, platforms);
+        List<PostRow> rows = reportQuery.findPosts(clientId, from, to, platforms, accountIds);
         Map<Long, Map<String, BigDecimal>> metricsByPost = loadPostMetrics(clientId, rows, from, to);
         List<ReportPost> posts = rows.stream()
                 .map(r -> toBarePost(r, zone, normalizedRankBy, metricsByPost))
@@ -299,6 +304,56 @@ public class ReportDataAssembler {
     }
 
     // ============================ Helpers ============================
+
+    /** Alcance resuelto del reporte: redes a incluir + cuentas a las que restringir ({@code null} = todas). */
+    private record Scope(List<String> platforms, List<Long> accountIds) {
+    }
+
+    /**
+     * Resuelve el alcance: si vienen {@code accountIds}, el reporte se arma SÓLO con esas cuentas —
+     * deben pertenecer al cliente (multi-tenant; si no, 404) — y la red se deriva de ellas, con
+     * prioridad sobre {@code platforms}. Sin {@code accountIds}, comportamiento por red (compat) y
+     * {@code accountIds = null} (sin restricción de cuenta en las queries).
+     */
+    private Scope resolveScope(Long clientId, List<String> requestedPlatforms, List<Long> requestedAccountIds) {
+        if (requestedAccountIds == null || requestedAccountIds.isEmpty()) {
+            return new Scope(resolvePlatforms(clientId, requestedPlatforms), null);
+        }
+        Map<Long, SocialAccount> owned = new HashMap<>();
+        for (SocialAccount account : accountRepository.findByClientId(clientId)) {
+            owned.put(account.getId(), account);
+        }
+        List<Long> ids = new ArrayList<>();
+        List<String> platforms = new ArrayList<>();
+        for (Long id : requestedAccountIds) {
+            if (id == null || ids.contains(id)) {
+                continue;
+            }
+            SocialAccount account = owned.get(id);
+            if (account == null) {
+                throw ApiException.notFound(
+                        "La cuenta %d no pertenece al cliente %d".formatted(id, clientId));
+            }
+            ids.add(id);
+            String platform = account.getPlatform().name();
+            if (!platforms.contains(platform)) {
+                platforms.add(platform);
+            }
+        }
+        if (ids.isEmpty()) {
+            // accountIds traía sólo nulls/duplicados vacíos: trátalo como sin filtro (por red).
+            return new Scope(resolvePlatforms(clientId, requestedPlatforms), null);
+        }
+        platforms.sort(Comparator.naturalOrder());
+        return new Scope(platforms, ids);
+    }
+
+    /** KPIs por red: account-scoped si hay {@code accountIds}, por red (todas las cuentas) si no. */
+    private SummaryResponse summary(Long clientId, LocalDate from, LocalDate to, List<Long> accountIds) {
+        return accountIds == null
+                ? summaryService.summary(clientId, from, to, null)
+                : summaryService.summaryForAccounts(clientId, from, to, accountIds);
+    }
 
     private List<String> resolvePlatforms(Long clientId, List<String> requested) {
         if (requested != null && !requested.isEmpty()) {

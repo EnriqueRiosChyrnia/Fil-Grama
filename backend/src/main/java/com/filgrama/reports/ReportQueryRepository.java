@@ -49,22 +49,29 @@ public class ReportQueryRepository {
      * (red, metric_key) que TIENEN al menos un snapshot de cuenta del cliente en {@code [from, to]}.
      * Permite distinguir "período previo ausente" (no aparece la clave → delta {@code null}) de
      * "previo = 0 real" (aparece la clave, aunque el valor sea 0 → delta real). Sin redes ⇒ vacío.
+     * {@code accountIds} no vacío restringe el baseline a esas cuentas (reporte por cuenta, CU5).
      */
     public Set<PlatformMetricKey> accountMetricKeysPresent(Long clientId, Collection<String> platforms,
+                                                           Collection<Long> accountIds,
                                                            LocalDate from, LocalDate to) {
         if (platforms == null || platforms.isEmpty()) {
             return Set.of();
         }
+        boolean byAccount = accountIds != null && !accountIds.isEmpty();
         String sql = """
                 SELECT DISTINCT a.platform AS platform, s.metric_key AS metric_key
                 FROM account_metric_snapshots s
                 JOIN social_accounts a ON a.id = s.account_id
                 WHERE s.client_id = :clientId
                   AND a.platform IN (:platforms)
+                  %s
                   AND (CAST(:fromDate AS date) IS NULL OR s.capture_date >= CAST(:fromDate AS date))
                   AND (CAST(:toDate AS date)   IS NULL OR s.capture_date <= CAST(:toDate AS date))
-                """;
+                """.formatted(byAccount ? "AND s.account_id IN (:accountIds)" : "");
         MapSqlParameterSource params = baseParams(clientId, from, to).addValue("platforms", platforms);
+        if (byAccount) {
+            params.addValue("accountIds", accountIds);
+        }
         return new HashSet<>(jdbc.query(sql, params, (rs, n) ->
                 new PlatformMetricKey(rs.getString("platform"), rs.getString("metric_key"))));
     }
@@ -72,22 +79,29 @@ public class ReportQueryRepository {
     /**
      * Posts del cliente publicados en {@code [from, to]} para las redes pedidas, del más nuevo al más
      * antiguo (orden por defecto de las secciones por tipo, CU5). Si no hay redes, devuelve vacío.
+     * {@code accountIds} no vacío restringe los posts a esas cuentas (reporte por cuenta, CU5).
      */
-    public List<PostRow> findPosts(Long clientId, LocalDate from, LocalDate to, Collection<String> platforms) {
+    public List<PostRow> findPosts(Long clientId, LocalDate from, LocalDate to,
+                                   Collection<String> platforms, Collection<Long> accountIds) {
         if (platforms == null || platforms.isEmpty()) {
             return List.of();
         }
+        boolean byAccount = accountIds != null && !accountIds.isEmpty();
         String sql = """
                 SELECT p.id, p.account_id, p.platform, p.post_type, p.permalink, p.caption,
                        p.remote_thumbnail_url, p.published_at, p.is_ephemeral
                 FROM posts p
                 WHERE p.client_id = :clientId
                   AND p.platform IN (:platforms)
+                  %s
                   AND (CAST(:fromDate AS date) IS NULL OR p.published_at >= CAST(:fromDate AS date))
                   AND (CAST(:toDate AS date)   IS NULL OR p.published_at <  (CAST(:toDate AS date) + 1))
                 ORDER BY p.published_at DESC NULLS LAST, p.id DESC
-                """;
+                """.formatted(byAccount ? "AND p.account_id IN (:accountIds)" : "");
         MapSqlParameterSource params = baseParams(clientId, from, to).addValue("platforms", platforms);
+        if (byAccount) {
+            params.addValue("accountIds", accountIds);
+        }
         return jdbc.query(sql, params, POST_ROW_MAPPER);
     }
 
