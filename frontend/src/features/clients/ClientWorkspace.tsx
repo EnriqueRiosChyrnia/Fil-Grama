@@ -16,7 +16,7 @@ import { isBroken } from './accountStatus';
  * de pestaña (diseño "Workspace de cliente", supersede HANDOFF §8 breadcrumb).
  */
 
-type TabKey = 'dashboard' | 'publicaciones' | 'comparar' | 'reporte';
+type TabKey = 'dashboard' | 'publicaciones' | 'comparar' | 'reporte' | 'cuentas';
 
 /** Pestaña activa según la ruta. Detalle/posts de cuenta mantienen el contexto:
  *  el grid de posts cuelga de Publicaciones; el detalle de cuenta, de Dashboard. */
@@ -25,6 +25,7 @@ function activeTab(rest: string): TabKey {
   if (rest.endsWith('/posts')) return 'publicaciones';
   if (rest.startsWith('/compare')) return 'comparar';
   if (rest.startsWith('/report')) return 'reporte';
+  if (rest.startsWith('/cuentas')) return 'cuentas';
   return 'dashboard'; // index + /accounts/:id (detalle de cuenta)
 }
 
@@ -85,6 +86,7 @@ export function ClientWorkspace() {
     { key: 'publicaciones', label: 'Publicaciones', to: `${base}/publicaciones` },
     { key: 'comparar', label: 'Comparar', to: `${base}/compare` },
     { key: 'reporte', label: 'Reporte', to: `${base}/report` },
+    { key: 'cuentas', label: 'Cuentas', to: `${base}/cuentas` },
   ];
 
   return (

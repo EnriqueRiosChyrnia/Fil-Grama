@@ -14,7 +14,7 @@ export type StatusTone = 'ok' | 'bad' | 'muted';
 
 export const STATUS_META: Record<AccountStatus, { label: string; tone: StatusTone }> = {
   CONNECTED: { label: 'Conectada', tone: 'ok' },
-  ERROR: { label: 'Con error', tone: 'bad' },
+  ERROR: { label: 'Error de token', tone: 'bad' },
   DISCONNECTED: { label: 'Desconectada', tone: 'bad' },
   UNSUPPORTED: { label: 'No compatible', tone: 'muted' },
   UNKNOWN: { label: 'Sin estado', tone: 'muted' },
