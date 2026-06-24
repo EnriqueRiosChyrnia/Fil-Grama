@@ -17,6 +17,7 @@ import type {
   PostGroup,
   ReportPost,
   PreviewReportRequest,
+  GenerateReportRequest,
 } from '../../api/generated/model';
 import {
   Button,
@@ -39,6 +40,7 @@ import {
   formatCompact,
   formatDate,
   formatPercent,
+  WIDE_RANGES,
   type RangeDays,
 } from '../../lib/format';
 import { downloadReport } from './reportDownload';
@@ -61,6 +63,13 @@ const RANK_OPTIONS = [
 ];
 
 const PAPER_MAX = 860;
+
+/** Orden de presentación de redes (IG · FB · TikTok) para listar cuentas. */
+const NET_ORDER = ['INSTAGRAM', 'FACEBOOK', 'TIKTOK'];
+
+function accountOptionLabel(a: AccountResponse): string {
+  return a.handle || a.displayName || `Cuenta ${a.id}`;
+}
 
 function trendStyle(up: boolean, size: number): CSSProperties {
   return { fontSize: size, fontWeight: 500, marginTop: 3, color: up ? 'var(--fg-primary)' : 'var(--fg-text-tertiary)' };
@@ -120,6 +129,7 @@ export function ReportPage() {
   );
   const [range, setRange] = useState<RangeDays>(30);
   const [platforms, setPlatforms] = useState<string[] | null>(null);
+  const [accountIds, setAccountIds] = useState<number[]>([]);
   const [rankBy, setRankBy] = useState('reach');
   const [exportingFmt, setExportingFmt] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -140,24 +150,31 @@ export function ReportPage() {
   const platformOptions = connectedPlatforms.length ? connectedPlatforms : allPlatforms;
 
   const selectedPlatforms = [...(platforms ?? platformOptions)].sort();
+  // Cuentas del cliente ordenadas IG · FB · TikTok para el selector por cuenta.
+  const accountOptions = [...accounts].sort(
+    (a, b) =>
+      NET_ORDER.indexOf((a.platform ?? '').toUpperCase()) - NET_ORDER.indexOf((b.platform ?? '').toUpperCase()),
+  );
+  // Hay selección por cuenta → el reporte se arma SÓLO con esas cuentas (manda
+  // accountIds y omite el filtro de redes). Sin selección → comportamiento por red.
+  const byAccount = accountIds.length > 0;
   const noAccounts = accountsQ.isSuccess && accounts.length === 0;
-  const noNetworks = !noAccounts && selectedPlatforms.length === 0;
+  const noNetworks = !noAccounts && !byAccount && selectedPlatforms.length === 0;
 
   const previewEnabled = Number.isFinite(id) && accountsQ.isSuccess && !noAccounts && !noNetworks;
   const previewQ = useQuery({
-    queryKey: qk.feature('reportPreview', id, reportType, dr.from, dr.to, selectedPlatforms, rankBy),
-    queryFn: ({ signal }) =>
-      postClientsClientIdReportsPreview(
-        id,
-        {
-          reportType,
-          from: dr.from,
-          to: dr.to,
-          platforms: selectedPlatforms.length ? selectedPlatforms : undefined,
-          rankBy,
-        },
-        { signal },
-      ).then((r) => r.data as ReportData),
+    queryKey: qk.feature('reportPreview', id, reportType, dr.from, dr.to, selectedPlatforms, accountIds, rankBy),
+    queryFn: ({ signal }) => {
+      const body: PreviewReportRequest = {
+        reportType,
+        from: dr.from,
+        to: dr.to,
+        platforms: byAccount ? undefined : selectedPlatforms.length ? selectedPlatforms : undefined,
+        accountIds: byAccount ? accountIds : undefined,
+        rankBy,
+      };
+      return postClientsClientIdReportsPreview(id, body, { signal }).then((r) => r.data as ReportData);
+    },
     enabled: previewEnabled,
   });
 
@@ -179,18 +196,25 @@ export function ReportPage() {
     });
   };
 
+  const toggleAccount = (accountId: number) => {
+    setExportError(null);
+    setAccountIds((prev) => (prev.includes(accountId) ? prev.filter((x) => x !== accountId) : [...prev, accountId]));
+  };
+
   const onExport = async (format: GenerateReportRequestFormat) => {
     setExportError(null);
     setExportingFmt(format);
     try {
-      const res = await postClientsClientIdReports(id, {
+      const body: GenerateReportRequest = {
         reportType,
         format,
         from: dr.from,
         to: dr.to,
-        platforms: selectedPlatforms.length ? selectedPlatforms : undefined,
+        platforms: byAccount ? undefined : selectedPlatforms.length ? selectedPlatforms : undefined,
+        accountIds: byAccount ? accountIds : undefined,
         rankBy,
-      });
+      };
+      const res = await postClientsClientIdReports(id, body);
       const report = res.data;
       if (!report?.downloadUrl) throw new Error('sin downloadUrl');
       const ext = format === GenerateReportRequestFormat.PDF ? 'pdf' : 'md';
@@ -237,11 +261,18 @@ export function ReportPage() {
             </Field>
 
             <Field label="Período">
-              <DateRangeControl value={range} onChange={setRange} />
+              <DateRangeControl value={range} onChange={setRange} options={WIDE_RANGES} />
             </Field>
 
-            <Field label="Redes" info="Sin selección se incluyen todas las redes conectadas del cliente.">
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <Field
+              label="Redes"
+              info={
+                byAccount
+                  ? 'Ignorado mientras filtres por cuentas: el reporte usa sólo las cuentas elegidas.'
+                  : 'Sin selección se incluyen todas las redes conectadas del cliente.'
+              }
+            >
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, opacity: byAccount ? 0.45 : 1 }}>
                 {platformOptions.map((p) => {
                   const checked = selectedPlatforms.includes(p);
                   return (
@@ -250,6 +281,7 @@ export function ReportPage() {
                       type="button"
                       role="checkbox"
                       aria-checked={checked}
+                      disabled={byAccount}
                       onClick={() => togglePlatform(p)}
                       style={{
                         display: 'inline-flex',
@@ -261,7 +293,7 @@ export function ReportPage() {
                         background: checked ? 'var(--fg-blue-50)' : 'var(--fg-bg-surface)',
                         color: 'var(--fg-text-primary)',
                         fontSize: 13,
-                        cursor: 'pointer',
+                        cursor: byAccount ? 'not-allowed' : 'pointer',
                       }}
                     >
                       <NetworkChip platform={p} long />
@@ -271,6 +303,47 @@ export function ReportPage() {
                 })}
               </div>
             </Field>
+
+            {accountOptions.length > 0 && (
+              <Field
+                label="Cuentas"
+                info="Elegí una o varias cuentas para reportar sólo esas. Sin selección se usan todas las cuentas de las redes elegidas."
+              >
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {accountOptions.map((a) => {
+                    const checked = a.id != null && accountIds.includes(a.id);
+                    const offline = (a.status ?? '').toUpperCase() !== 'CONNECTED';
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        disabled={a.id == null}
+                        onClick={() => a.id != null && toggleAccount(a.id)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '7px 11px',
+                          borderRadius: 'var(--fg-radius)',
+                          border: `1px solid ${checked ? 'var(--fg-primary)' : 'var(--fg-border-strong)'}`,
+                          background: checked ? 'var(--fg-blue-50)' : 'var(--fg-bg-surface)',
+                          color: 'var(--fg-text-primary)',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <NetworkChip platform={a.platform} />
+                        <span>{accountOptionLabel(a)}</span>
+                        {offline && <span style={{ fontSize: 11, color: 'var(--fg-text-tertiary)' }}>· sin conexión</span>}
+                        <span style={{ fontSize: 12, color: 'var(--fg-text-tertiary)' }}>{checked ? '✓' : '+'}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
 
             <Field label="Ranking por" info="Métrica con la que se rankean las publicaciones destacadas.">
               <SegmentedControl<string>

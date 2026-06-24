@@ -76,6 +76,29 @@ export function ReconnectPage() {
         </div>
       )}
 
+      {broken.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            marginTop: 16,
+            padding: '11px 14px',
+            background: 'var(--fg-blue-50)',
+            borderRadius: 'var(--fg-radius)',
+            fontSize: 12.5,
+            color: 'var(--fg-text-secondary)',
+            lineHeight: 1.5,
+          }}
+        >
+          <span aria-hidden>ⓘ</span>
+          <span>
+            Si tenés varias cuentas, cerrá sesión en TikTok o usá una ventana de incógnito para elegir la
+            correcta. Reconectamos exactamente la cuenta esperada: si autorizás otra, la operación se rechaza.
+          </span>
+        </div>
+      )}
+
       <div style={{ marginTop: 18 }}>
         {accountsQ.isLoading ? (
           <Card padding={18}>
@@ -135,7 +158,7 @@ export function ReconnectPage() {
                     <Button
                       size="sm"
                       loading={pending === p}
-                      onClick={() => connect(p)}
+                      onClick={() => connect(p, a.id)}
                     >
                       Reconectar {networkLabel(p, true)}
                     </Button>

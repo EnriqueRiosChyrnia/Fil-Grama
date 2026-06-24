@@ -11,5 +11,6 @@ export interface PreviewReportRequest {
   from: string;
   to: string;
   platforms?: string[];
+  accountIds?: number[];
   rankBy?: string;
 }
