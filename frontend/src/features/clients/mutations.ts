@@ -12,14 +12,14 @@ import { useCallback, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   postClients,
-  postClientsClientIdAccountsConnectPlatform,
+  getPostClientsClientIdAccountsConnectPlatformUrl,
   postAccountsIdDisconnect,
   getGetClientsQueryKey,
   getGetClientsIdQueryKey,
   getGetClientsClientIdAccountsQueryKey,
 } from '../../api/generated/endpoints';
-import type { CreateClientRequest, ClientResponse } from '../../api/generated/model';
-import { ApiError } from '../../lib/api';
+import type { CreateClientRequest, ClientResponse, ConnectResponse } from '../../api/generated/model';
+import { ApiError, orvalFetch } from '../../lib/api';
 
 function humanError(e: unknown): string {
   if (e instanceof ApiError) return e.humanMessage;
@@ -62,18 +62,27 @@ export function useDisconnectAccount(clientId: number) {
  *
  * Abrimos la pestaña en blanco SINCRÓNICAMENTE dentro del click (antes del await)
  * para que el bloqueador de pop-ups no la corte; recién después le seteamos la URL.
+ *
+ * RECONEXIÓN: `connect(platform, accountId)` pasa el `accountId` esperado como query
+ * param; el backend v2 valida que el open_id devuelto por la red coincida con esa
+ * cuenta y rechaza (problem+json) si reconectaste la equivocada. El param es opcional
+ * en el contrato nuevo: lo adosamos a la URL generada en vez de editar a mano
+ * `api/generated/*` (anti-drift); al correr `npm run codegen` contra el backend nuevo
+ * el endpoint generado lo declarará nativamente y este wrapper sigue funcionando.
  */
 export function useConnectFlow(clientId: number) {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const connect = useCallback(
-    async (platform: string) => {
+    async (platform: string, accountId?: number) => {
       setError(null);
       setPending(platform);
       const tab = window.open('about:blank', '_blank');
       try {
-        const res = await postClientsClientIdAccountsConnectPlatform(clientId, platform.toLowerCase());
+        let path = getPostClientsClientIdAccountsConnectPlatformUrl(clientId, platform.toLowerCase());
+        if (accountId != null) path += `?accountId=${accountId}`;
+        const res = await orvalFetch<{ data: ConnectResponse }>(path, { method: 'POST' });
         const url = res.data?.authorizationUrl;
         if (!url) throw new Error('No recibimos el enlace de autorización. Probá de nuevo.');
         if (tab) tab.location.href = url;

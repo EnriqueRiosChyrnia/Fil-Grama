@@ -173,7 +173,7 @@ export function CuentasPage() {
                       first={i === 0}
                       connecting={pending === (a.platform ?? '').toUpperCase()}
                       disconnecting={disconnect.isPending && disconnect.variables === a.id}
-                      onReconnect={() => connect((a.platform ?? '').toUpperCase())}
+                      onReconnect={() => connect((a.platform ?? '').toUpperCase(), a.id)}
                       onDisconnect={() => a.id != null && disconnect.mutate(a.id)}
                     />
                   ))}
