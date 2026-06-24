@@ -32,13 +32,24 @@ class AccountControllerTest {
 
     @Test
     void connectReturns200WithUrlAndState() throws Exception {
-        when(service.connect(eq(1L), eq("tiktok"), any()))
+        when(service.connect(eq(1L), eq("tiktok"), any(), any()))
                 .thenReturn(new ConnectResponse("https://auth.url", "the-state"));
 
         mvc.perform(post("/api/v1/clients/1/accounts/connect/tiktok"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authorizationUrl").value("https://auth.url"))
                 .andExpect(jsonPath("$.state").value("the-state"));
+    }
+
+    @Test
+    void connectReconnectPassesAccountIdThrough() throws Exception {
+        when(service.connect(eq(1L), eq("tiktok"), any(), eq(9L)))
+                .thenReturn(new ConnectResponse("https://auth.url", "the-state"));
+
+        mvc.perform(post("/api/v1/clients/1/accounts/connect/tiktok").param("accountId", "9"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("the-state"));
+        verify(service).connect(eq(1L), eq("tiktok"), any(), eq(9L));
     }
 
     @Test

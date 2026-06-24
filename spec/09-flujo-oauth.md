@@ -15,22 +15,35 @@
 
 ## Flujo común (mapea a [[03-contratos-api]])
 
-1. `POST /clients/{clientId}/accounts/connect/{platform}` → backend arma la `authorizationUrl`
-   oficial con los scopes y un `state` único (persistido, TTL corto). Devuelve `{authorizationUrl, state}`.
+1. `POST /clients/{clientId}/accounts/connect/{platform}` (opc `?accountId=` para **reconexión**) →
+   backend arma la `authorizationUrl` oficial con los scopes y un `state` único (JWT firmado, TTL corto).
+   En reconexión, el `state` lleva además el `external_account_id` **esperado** de esa cuenta. Devuelve
+   `{authorizationUrl, state}`.
 2. El cliente autoriza en la pantalla oficial (lo acompaña admin/empleado).
 3. La red redirige a `GET /oauth/callback/{platform}?code=&state=`.
-4. Backend valida `state` (existe, no usado, no expirado), **canjea el `code` server-side** por el
+4. Backend valida `state` (firma, no usado, no expirado), **canjea el `code` server-side** por el
    token, detecta `account_type`/`capabilities`, crea `social_accounts` + `account_credentials`
    (cifrado) y redirige al front (`?accountId=` o `?error=`).
-5. `state` se marca usado. Errores → no se crea cuenta.
+5. `state` se marca usado. Errores → no se crea cuenta. Tras un connect **exitoso**, el backend dispara
+   un **escaneo inmediato SOLO de esa cuenta** (best-effort, asíncrono; ver [[10-job-diario]]).
+
+> **Reconexión segura (no enganchar la cuenta equivocada).** Bug observado: el navegador queda logueado
+> con la última cuenta de la red; al reconectar otra, el callback recibe el `open_id` de la **sesión
+> activa** y linkearía la cuenta equivocada. Fix: en reconexión el connect recibe `accountId` y embebe el
+> `external_account_id` esperado en el `state` firmado. Si el `open_id` devuelto **no coincide** → el
+> callback rechaza con **`409`** ("Autorizaste con otra cuenta; cerrá sesión en la red e intentá de
+> nuevo"), **sin linkear ni duplicar**. En connect nuevo (sin `accountId`) no hay esperado: no se puede
+> validar. [[04-criterios-aceptacion]]
 
 > **Multi-cuenta por red.** Un cliente puede conectar **varias cuentas de la misma red**. Hay dos
 > caminos que producen multi-cuenta: (a) **un solo consentimiento de Meta** devuelve varias Páginas /
 > IG vinculados (ver `GET /me/accounts`) → el front muestra un **paso de selección** para elegir
 > cuáles dar de alta; se crea una fila en `social_accounts` por cada cuenta elegida, todas compartiendo
 > el mismo token de usuario / Page tokens derivados; (b) el usuario **repite el flujo "Conectar"**
-> para esa red con otra autorización (otra cuenta/login). El `state` mapea a `client_id` + `platform`
-> (no a una cuenta puntual), así que admite ambos caminos sin cambios.
+> para esa red con otra autorización (otra cuenta/login). En un connect **nuevo** el `state` mapea a
+> `client_id` + `platform` (no a una cuenta puntual), así que admite ambos caminos sin cambios; en una
+> **reconexión** (`accountId` presente) el `state` además fija la cuenta esperada (ver "Reconexión
+> segura" arriba).
 
 ## Tiempos de vida de tokens
 
@@ -108,7 +121,9 @@ cliente tiene Página de FB + IG profesional vinculada (un solo consentimiento c
 
 ## Decisiones abiertas
 
-- ¿`state` en tabla dedicada (con TTL) o JWT firmado de un solo uso? (impl.)
+- ~~¿`state` en tabla dedicada (con TTL) o JWT firmado de un solo uso?~~ → **RESUELTO:** JWT firmado
+  (HMAC-SHA256) de un solo uso; nonce/jti consumido en memoria + TTL corto. En reconexión lleva el
+  `external_account_id` esperado como claim.
 - Política exacta de cuándo refrescar IG (umbral de días) — afinar en implementación.
 - ~~Manejo de un cliente con varias Páginas/cuentas bajo un mismo consentimiento de Meta~~ →
   **RESUELTO:** multi-cuenta por red soportado; paso de selección cuando el consentimiento devuelve

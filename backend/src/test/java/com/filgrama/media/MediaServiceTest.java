@@ -101,6 +101,54 @@ class MediaServiceTest {
     }
 
     @Test
+    void hasThumbnail_trueWhenAThumbnailAssetExists() {
+        initService();
+        MediaAsset thumb = new MediaAsset();
+        thumb.setKind(MediaKind.THUMBNAIL);
+        when(mediaAssets.findByPostId(42L)).thenReturn(List.of(thumb));
+
+        assertThat(service.hasThumbnail(42L)).isTrue();
+    }
+
+    @Test
+    void hasThumbnail_falseWhenNoAssets() {
+        initService();
+        when(mediaAssets.findByPostId(42L)).thenReturn(List.of());
+
+        assertThat(service.hasThumbnail(42L)).isFalse();
+    }
+
+    @Test
+    void cacheThumbnailQuietly_uploadsAndPersists() {
+        initService();
+        Post post = postMock(42L, 7L, false);
+        when(storage.put(any(), eq(IMAGE), eq("image/jpeg")))
+                .thenAnswer(inv -> new StoredObject(inv.getArgument(0), IMAGE, "image/jpeg"));
+        when(mediaAssets.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Optional<MediaAsset> saved = service.cacheThumbnailQuietly(post, IMAGE, "image/jpeg");
+
+        verify(storage).put(any(), eq(IMAGE), eq("image/jpeg"));
+        verify(mediaAssets).save(any(MediaAsset.class));
+        assertThat(saved).isPresent();
+        assertThat(saved.get().getKind()).isEqualTo(MediaKind.THUMBNAIL);
+        assertThat(saved.get().getPostId()).isEqualTo(42L);
+    }
+
+    @Test
+    void cacheThumbnailQuietly_swallowsStorageFailure_returnsEmpty() {
+        initService();
+        Post post = postMock(42L, 7L, false);
+        when(storage.put(any(), any(), any()))
+                .thenThrow(new com.filgrama.storage.StorageException("S3 caído", null));
+
+        Optional<MediaAsset> result = service.cacheThumbnailQuietly(post, IMAGE, "image/jpeg");
+
+        assertThat(result).isEmpty();              // best-effort: no propaga
+        verify(mediaAssets, never()).save(any());  // no fila si no hubo binario
+    }
+
+    @Test
     void getThumbnailUrl_prefersPresignedUrl() {
         initService();
         MediaAsset asset = new MediaAsset();

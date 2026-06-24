@@ -73,8 +73,8 @@
 |---|---|---|
 | GET | `/clients/{clientId}/accounts` | cuentas conectadas del cliente |
 | GET | `/accounts/{id}` | detalle (sin exponer tokens) |
-| POST | `/clients/{clientId}/accounts/connect/{platform}` | inicia OAuth → `{authorizationUrl, state}` |
-| GET | `/oauth/callback/{platform}?code=&state=` | callback: canjea code, crea cuenta + credencial, redirige al front |
+| POST | `/clients/{clientId}/accounts/connect/{platform}` `?accountId=` (opc) | inicia OAuth → `{authorizationUrl, state}`. `accountId` opc = **reconexión** de una cuenta conocida |
+| GET | `/oauth/callback/{platform}?code=&state=` | callback: canjea code, crea cuenta + credencial, redirige al front; **`409`** si la reconexión autorizó otra cuenta |
 | POST | `/accounts/{id}/disconnect` | status `DISCONNECTED` → `204` |
 | POST | `/accounts/{id}/refresh-token` `[ADMIN]` | fuerza refresh del token |
 
@@ -88,6 +88,18 @@ visible y el `@usuario` reales de la red (TikTok vía `GET /v2/user/info/`; Meta
 el `open_id`). El **refresh del token** (`/accounts/{id}/refresh-token` y el sync diario, que refresca
 el token de TikTok ~cada día) **re-sincroniza** `displayName`/`handle`, así que cuentas viejas se
 corrigen sin reconectar. `avatarUrl` aún no se persiste (no hay columna; ver reporte del track).
+
+**Reconexión segura (`accountId` en connect).** Para **reconectar** una cuenta ya conocida, el front
+pasa `?accountId=` al connect; el backend embebe el `external_account_id` esperado de esa cuenta en el
+`state` firmado. En el callback, si la red autoriza **otra** cuenta (típico: el navegador sigue logueado
+con la última cuenta y devuelve su `open_id`), el `open_id` no coincide con el esperado → **`409`** con un
+mensaje claro ("Autorizaste con otra cuenta; cerrá sesión en la red e intentá de nuevo"), **sin linkear ni
+duplicar**. En un connect **nuevo** (sin `accountId`) no hay cuenta esperada: no se puede validar y se acepta
+lo que la red devuelva. Ver [[09-flujo-oauth]].
+
+**Escaneo al conectar.** Tras un callback exitoso, el backend dispara un **sync inmediato SOLO de esa
+cuenta** (posts + métricas + miniaturas), best-effort y asíncrono: si falla, la cuenta queda conectada
+igual. El front ve datos al instante sin esperar al job diario. Ver [[10-job-diario]].
 
 ---
 

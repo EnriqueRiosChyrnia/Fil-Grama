@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,9 +46,14 @@ public class AccountController {
         return service.get(id);
     }
 
+    /**
+     * Inicia el OAuth de una red. {@code accountId} opcional = reconexión de una cuenta conocida:
+     * el callback exigirá que la red autorice esa misma cuenta (TAREA B).
+     */
     @PostMapping("/clients/{clientId}/accounts/connect/{platform}")
-    public ConnectResponse connect(@PathVariable Long clientId, @PathVariable String platform) {
-        return service.connect(clientId, platform, currentUserId());
+    public ConnectResponse connect(@PathVariable Long clientId, @PathVariable String platform,
+                                   @RequestParam(required = false) Long accountId) {
+        return service.connect(clientId, platform, currentUserId(), accountId);
     }
 
     @PostMapping("/accounts/{id}/disconnect")

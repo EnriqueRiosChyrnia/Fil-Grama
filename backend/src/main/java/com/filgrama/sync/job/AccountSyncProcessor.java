@@ -21,6 +21,7 @@ import com.filgrama.repository.PostRepository;
 import com.filgrama.repository.RawApiPayloadRepository;
 import com.filgrama.sync.capture.InsightsProvider;
 import com.filgrama.sync.capture.InsightsProviderRegistry;
+import com.filgrama.sync.capture.ThumbnailFetcher;
 import com.filgrama.sync.capture.dto.AccountCapture;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
@@ -51,10 +52,12 @@ public class AccountSyncProcessor {
     private final PostRepository postRepository;
     private final ClientRepository clientRepository;
     private final MediaService mediaService;
+    private final ThumbnailFetcher thumbnailFetcher;
 
     public AccountSyncProcessor(InsightsProviderRegistry registry, TokenAccessor tokenAccessor,
             Retrier retrier, SnapshotDeriver deriver, RawApiPayloadRepository rawRepository,
-            PostRepository postRepository, ClientRepository clientRepository, MediaService mediaService) {
+            PostRepository postRepository, ClientRepository clientRepository, MediaService mediaService,
+            ThumbnailFetcher thumbnailFetcher) {
         this.registry = registry;
         this.tokenAccessor = tokenAccessor;
         this.retrier = retrier;
@@ -63,6 +66,7 @@ public class AccountSyncProcessor {
         this.postRepository = postRepository;
         this.clientRepository = clientRepository;
         this.mediaService = mediaService;
+        this.thumbnailFetcher = thumbnailFetcher;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -89,6 +93,8 @@ public class AccountSyncProcessor {
                     () -> provider.fetchPostInsights(account, rawPost, token));
             saveRaw(runId, account, RawScope.POST, post.getId(), insights.endpoint(), insights.rawJson(), now);
             captured += deriver.derivePost(account, post, insights.metrics(), now, captureDate);
+            // (6) miniatura real para el reporte: baja remote_thumbnail_url → storage (TAREA F).
+            cacheThumbnailBestEffort(post);
         }
 
         // (CU8) stories de Instagram: métricas finales + miniatura cacheada
@@ -97,10 +103,37 @@ public class AccountSyncProcessor {
             saveRaw(runId, account, RawScope.POST, post.getId(), story.endpoint(), story.rawJson(), now);
             captured += deriver.derivePost(account, post, story.metrics(), now, captureDate);
             if (story.thumbnailBytes() != null && story.thumbnailBytes().length > 0) {
-                mediaService.cacheThumbnail(post, story.thumbnailBytes(), story.thumbnailContentType());
+                if (!mediaService.hasThumbnail(post.getId())) { // idempotente entre corridas
+                    mediaService.cacheThumbnailQuietly(post, story.thumbnailBytes(), story.thumbnailContentType());
+                }
+            } else {
+                // El provider no trajo bytes (camino real): la bajamos desde la URL como los posts.
+                cacheThumbnailBestEffort(post);
             }
         }
         return captured;
+    }
+
+    /**
+     * Cachea la miniatura del post desde {@code remote_thumbnail_url}, <b>best-effort</b> (TAREA F):
+     * salta si no hay URL o si ya está cacheada (idempotente entre corridas), baja los bytes y los
+     * sube en una tx aislada. Cualquier fallo (red, storage, etc.) se loguea y se traga: la captura
+     * de posts/métricas de la cuenta NO debe romperse por una miniatura.
+     */
+    private void cacheThumbnailBestEffort(Post post) {
+        String url = post.getRemoteThumbnailUrl();
+        if (url == null || url.isBlank()) {
+            return;
+        }
+        try {
+            if (mediaService.hasThumbnail(post.getId())) {
+                return;
+            }
+            thumbnailFetcher.fetch(url).ifPresent(img ->
+                    mediaService.cacheThumbnailQuietly(post, img.bytes(), img.contentType()));
+        } catch (RuntimeException e) {
+            log.warn("No se pudo cachear la miniatura del post {}: {}", post.getId(), e.getMessage());
+        }
     }
 
     private Post upsertPost(SocialAccount account, RawPost rawPost, Instant now) {

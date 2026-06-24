@@ -59,4 +59,19 @@ class OAuthStateServiceTest {
         String state = service.issue(5L, Platform.TIKTOK, null);
         assertThat(service.consume(state).userId()).isNull();
     }
+
+    @Test
+    void connectNuevoNoLlevaCuentaEsperada() {
+        String state = service.issue(5L, Platform.TIKTOK, 1L);
+        assertThat(service.consume(state).expectedExternalAccountId()).isNull();
+    }
+
+    @Test
+    void reconexionEmbebeYDevuelveElExternalAccountIdEsperado() {
+        String state = service.issue(5L, Platform.TIKTOK, 1L, "open-id-esperado");
+        OAuthState parsed = service.consume(state);
+        assertThat(parsed.expectedExternalAccountId()).isEqualTo("open-id-esperado");
+        assertThat(parsed.clientId()).isEqualTo(5L);
+        assertThat(parsed.platform()).isEqualTo(Platform.TIKTOK);
+    }
 }

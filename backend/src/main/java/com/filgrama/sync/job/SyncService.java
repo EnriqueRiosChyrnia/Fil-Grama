@@ -67,6 +67,28 @@ public class SyncService {
         return runId;
     }
 
+    /**
+     * Escaneo inmediato de UNA sola cuenta (no el job completo): scan al conectar (TAREA A). Crea su
+     * propia corrida {@code sync_runs} de 1 cuenta y la procesa en su tx aislada. Best-effort: si la
+     * cuenta falla, la corrida queda {@code PARTIAL} pero el método <b>no relanza</b> (quien dispara el
+     * scan —el listener del connect— no debe romperse por esto). Devuelve el id de la corrida.
+     */
+    public Long syncAccountNow(SocialAccount account) {
+        Long runId = createRun();
+        try {
+            int captured = processor.process(account, runId);
+            saveResult(runId, account.getId(), SyncAccountStatus.OK, captured, null);
+            finishRun(runId, SyncRunStatus.SUCCESS, 1, 1, 0, null);
+            log.info("Scan al conectar cuenta {} OK (corrida {}, {} métricas)", account.getId(), runId, captured);
+        } catch (Exception e) {
+            String message = rootMessage(e);
+            saveResult(runId, account.getId(), SyncAccountStatus.ERROR, null, message);
+            finishRun(runId, SyncRunStatus.PARTIAL, 1, 0, 1, "cuenta " + account.getId() + ": " + message);
+            log.warn("Scan al conectar cuenta {} ERROR (corrida {}): {}", account.getId(), runId, message);
+        }
+        return runId;
+    }
+
     /** Crea {@code sync_runs} en {@code RUNNING} y devuelve su id (síncrono, para responder rápido). */
     public Long createRun() {
         SyncRun run = new SyncRun();
