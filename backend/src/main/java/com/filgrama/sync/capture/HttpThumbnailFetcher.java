@@ -13,6 +13,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import com.filgrama.media.ImageNormalizer;
+
 /**
  * Impl real (prod): baja la miniatura por HTTP con {@link HttpClient} de la JDK (sin deps nuevas).
  * Acota timeout y tamaño, exige 2xx + content-type de imagen. Cualquier desvío → {@code empty}
@@ -27,6 +29,10 @@ public class HttpThumbnailFetcher implements ThumbnailFetcher {
 
     /** Tope de tamaño: miniaturas son ~50-200 KB; cortamos bien por encima para no bajar videos. */
     private static final long MAX_BYTES = 8L * 1024 * 1024;
+
+    /** Algunas CDNs (no TikTok hoy, pero por las dudas) rechazan clientes sin un UA de navegador. */
+    private static final String USER_AGENT =
+            "Mozilla/5.0 (compatible; FilgramaThumbnailFetcher/1.0; +https://filgrama.app)";
 
     private final HttpClient http;
     private final Duration requestTimeout;
@@ -50,6 +56,8 @@ public class HttpThumbnailFetcher implements ThumbnailFetcher {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(requestTimeout)
+                    .header("User-Agent", USER_AGENT)
+                    .header("Accept", "image/*")
                     .GET()
                     .build();
             HttpResponse<byte[]> response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
@@ -70,7 +78,15 @@ public class HttpThumbnailFetcher implements ThumbnailFetcher {
                 log.warn("Miniatura {}: content-type no-imagen '{}'", host(url), contentType);
                 return Optional.empty();
             }
-            return Optional.of(new Fetched(body, contentType));
+            // TikTok entrega WebP, que el motor de PDF no rasteriza: lo dejamos PDF-safe (WebP -> PNG)
+            // antes de cachear, así el binario en el storage ya sirve para el reporte (ver
+            // ImageNormalizer). Si no se puede decodificar, best-effort: empty.
+            Optional<ImageNormalizer.Image> pdfSafe = ImageNormalizer.toPdfSafe(body, contentType);
+            if (pdfSafe.isEmpty()) {
+                log.warn("Miniatura {}: no se pudo decodificar/transcodificar la imagen", host(url));
+                return Optional.empty();
+            }
+            return Optional.of(new Fetched(pdfSafe.get().bytes(), pdfSafe.get().contentType()));
         } catch (Exception e) {
             // InterruptedException incluida: best-effort, no propagamos.
             if (e instanceof InterruptedException) {

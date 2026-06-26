@@ -115,6 +115,15 @@
             <version>1.0.10</version>
         </dependency>
 
+        <!-- Lector WebP para ImageIO (puro Java, sin libs nativas). Las miniaturas de TikTok llegan
+             en WebP; ni la JDK ni openhtmltopdf/PDFBox lo decodifican, así que se transcodifican a PNG
+             (ver com.filgrama.media.ImageNormalizer) para que aparezcan en el PDF. -->
+        <dependency>
+            <groupId>com.twelvemonkeys.imageio</groupId>
+            <artifactId>imageio-webp</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
