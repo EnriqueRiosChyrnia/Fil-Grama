@@ -1,5 +1,6 @@
 package com.filgrama.sync.capture;
 
+import java.time.Duration;
 import java.util.Optional;
 
 /**
@@ -15,6 +16,13 @@ public interface ThumbnailFetcher {
 
     /** Descarga la miniatura, o {@link Optional#empty()} si la URL es vacía o falla algo. */
     Optional<Fetched> fetch(String url);
+
+    /**
+     * Igual que {@link #fetch(String)} pero acotando el timeout de respuesta a {@code requestTimeout}.
+     * Lo usa el render del reporte, que baja la miniatura de forma sincrónica: necesita un tope corto
+     * (3-5s) para no demorar el PDF cuando la URL está vencida. Mismo contrato best-effort.
+     */
+    Optional<Fetched> fetch(String url, Duration requestTimeout);
 
     /** Bytes ya descargados + su content-type (ej. {@code image/jpeg}). */
     record Fetched(byte[] bytes, String contentType) {

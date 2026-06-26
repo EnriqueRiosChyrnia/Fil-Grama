@@ -23,10 +23,10 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Renderiza el {@link ReportData} a PDF: arma un <b>XHTML print-friendly</b> (grilla de miniaturas
  * 9:16 Reels / 1:1 Feed, métrica sobre la imagen, fecha debajo, estrella en destacadas) y lo rinde
- * con <b>openhtmltopdf</b>. Las miniaturas se embeben como {@code data:image/...;base64,...} (leídas
- * vía el {@code StoragePort} del track E por el {@link ThumbnailLoader}); en PDF no se hace fetch
- * remoto (sería una llamada de red en la generación) — sin cache va un placeholder. Mismo
- * {@code ReportData} que el Markdown. La sección "Análisis del mes" sale sólo si hay narrativa.
+ * con <b>openhtmltopdf</b>. Las miniaturas se embeben como {@code data:image/...;base64,...} (las
+ * resuelve el {@link ThumbnailLoader}: cache del track E o, si no hay binario, fallback de descarga
+ * remota best-effort con timeout corto) — sólo va placeholder si ni la cache ni el remoto dan imagen.
+ * Mismo {@code ReportData} que el Markdown. La sección "Análisis del mes" sale sólo si hay narrativa.
  */
 @Component
 @Slf4j
