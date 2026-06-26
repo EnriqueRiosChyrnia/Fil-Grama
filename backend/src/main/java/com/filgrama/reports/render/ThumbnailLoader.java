@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.filgrama.domain.MediaAsset;
 import com.filgrama.domain.enums.MediaKind;
+import com.filgrama.media.ImageNormalizer;
 import com.filgrama.repository.MediaAssetRepository;
 import com.filgrama.storage.StoragePort;
 
@@ -25,8 +26,6 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @Slf4j
 public class ThumbnailLoader {
-
-    private static final String DEFAULT_CONTENT_TYPE = "image/jpeg";
 
     private final MediaAssetRepository mediaAssets;
     private final StoragePort storage;
@@ -73,9 +72,13 @@ public class ThumbnailLoader {
             if (bytes == null || bytes.length == 0) {
                 return null;
             }
-            String contentType = asset.getContentType() == null || asset.getContentType().isBlank()
-                    ? DEFAULT_CONTENT_TYPE : asset.getContentType();
-            return "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            // El PDF (openhtmltopdf/PDFBox vía ImageIO) no rasteriza WebP — la miniatura cacheada de
+            // TikTok viene en WebP. Normalizamos a un formato PDF-safe (transcodea WebP -> PNG) antes
+            // de embeber; si los bytes no son una imagen decodificable, caemos al remoto (null).
+            return ImageNormalizer.toPdfSafe(bytes, asset.getContentType())
+                    .map(img -> "data:" + img.contentType() + ";base64,"
+                            + Base64.getEncoder().encodeToString(img.bytes()))
+                    .orElse(null);
         } catch (RuntimeException e) {
             // La miniatura es accesoria: ante CUALQUIER fallo de storage (objeto purgado →
             // StorageException, o backend caído → otra RuntimeException sin mapear) caemos al remoto

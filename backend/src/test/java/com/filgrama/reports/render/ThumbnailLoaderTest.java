@@ -4,7 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
+
+import javax.imageio.ImageIO;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +62,26 @@ class ThumbnailLoaderTest {
         Thumbnail thumb = loader.load(POST_ID, REMOTE);
 
         assertThat(thumb.dataUri()).startsWith("data:image/jpeg;base64,");
+    }
+
+    @Test
+    void webpThumbnailIsTranscodedToPngSoThePdfCanRenderIt() throws Exception {
+        // TikTok cachea las miniaturas en WebP, pero openhtmltopdf/PDFBox (vía ImageIO) no lo
+        // rasteriza: hay que transcodificar a PNG al armar el data-URI o sale "sin miniatura".
+        byte[] webp = Files.readAllBytes(Path.of("src/test/resources/thumbnails/sample.webp"));
+        MediaAsset asset = thumbnailAsset();
+        asset.setStoragePath("clients/16/posts/376/thumb.webp");
+        asset.setContentType("image/webp");
+        when(mediaAssets.findByPostId(POST_ID)).thenReturn(List.of(asset));
+        when(storage.get("clients/16/posts/376/thumb.webp")).thenReturn(webp);
+
+        Thumbnail thumb = loader.load(POST_ID, REMOTE);
+
+        assertThat(thumb.dataUri()).startsWith("data:image/png;base64,");
+        byte[] embedded = Base64.getDecoder()
+                .decode(thumb.dataUri().substring("data:image/png;base64,".length()));
+        // Los bytes embebidos son un PNG real y decodificable (lo que el PDF necesita).
+        assertThat(ImageIO.read(new ByteArrayInputStream(embedded))).isNotNull();
     }
 
     @Test
