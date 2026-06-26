@@ -149,6 +149,48 @@ class MediaServiceTest {
     }
 
     @Test
+    void cacheRenderedThumbnail_cachesWhenPostExistsAndHasNoThumbnailYet() {
+        initService();
+        Post post = postMock(42L, 7L, false);
+        when(posts.findById(42L)).thenReturn(Optional.of(post));
+        when(mediaAssets.findByPostId(42L)).thenReturn(List.of());
+        when(storage.put(any(), eq(IMAGE), eq("image/png")))
+                .thenAnswer(inv -> new StoredObject(inv.getArgument(0), IMAGE, "image/png"));
+        when(mediaAssets.save(any(MediaAsset.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.cacheRenderedThumbnail(42L, IMAGE, "image/png");
+
+        verify(storage).put(any(), eq(IMAGE), eq("image/png"));
+        verify(mediaAssets).save(any(MediaAsset.class));
+    }
+
+    @Test
+    void cacheRenderedThumbnail_skipsWhenPostDoesNotExist() {
+        initService();
+        when(posts.findById(99L)).thenReturn(Optional.empty());
+
+        service.cacheRenderedThumbnail(99L, IMAGE, "image/png");
+
+        verify(storage, never()).put(any(), any(), any());
+        verify(mediaAssets, never()).save(any());
+    }
+
+    @Test
+    void cacheRenderedThumbnail_skipsWhenAlreadyCached() {
+        initService();
+        Post post = postMock(42L, 7L, false);
+        when(posts.findById(42L)).thenReturn(Optional.of(post));
+        MediaAsset existing = new MediaAsset();
+        existing.setKind(MediaKind.THUMBNAIL);
+        when(mediaAssets.findByPostId(42L)).thenReturn(List.of(existing));
+
+        service.cacheRenderedThumbnail(42L, IMAGE, "image/png");
+
+        verify(storage, never()).put(any(), any(), any());
+        verify(mediaAssets, never()).save(any());
+    }
+
+    @Test
     void getThumbnailUrl_prefersPresignedUrl() {
         initService();
         MediaAsset asset = new MediaAsset();

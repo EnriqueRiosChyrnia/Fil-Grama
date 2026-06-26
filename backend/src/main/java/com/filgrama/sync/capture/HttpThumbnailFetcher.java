@@ -49,13 +49,19 @@ public class HttpThumbnailFetcher implements ThumbnailFetcher {
 
     @Override
     public Optional<Fetched> fetch(String url) {
+        return fetch(url, requestTimeout);
+    }
+
+    @Override
+    public Optional<Fetched> fetch(String url, Duration timeout) {
         if (url == null || url.isBlank()) {
             return Optional.empty();
         }
+        Duration effectiveTimeout = timeout != null ? timeout : requestTimeout;
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
-                    .timeout(requestTimeout)
+                    .timeout(effectiveTimeout)
                     .header("User-Agent", USER_AGENT)
                     .header("Accept", "image/*")
                     .GET()

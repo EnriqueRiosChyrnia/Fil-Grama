@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.filgrama.domain.MediaAsset;
@@ -89,6 +90,29 @@ public class MediaService {
             asset.setPurgeAfter(now.plus(STORY_RETENTION));
         }
         return mediaAssets.save(asset);
+    }
+
+    /**
+     * Auto-heal del reporte: cachea una miniatura que el render bajó al vuelo desde
+     * {@code remote_thumbnail_url} (cuando no había binario en storage), para no rebajarla la próxima.
+     * Corre en una transacción <b>nueva</b> ({@code REQUIRES_NEW}) porque el armado del reporte es
+     * {@code readOnly} y un INSERT en esa tx fallaría. No reintenta si el post ya tiene miniatura
+     * (carrera con el sync) o no existe. Es <b>best-effort</b>: si el storage falla, la excepción sale
+     * por el límite {@code REQUIRES_NEW} (que hace rollback limpio de ESTA tx) y el llamador
+     * ({@code ThumbnailLoader}) la traga — el reporte ya quedó armado con el data-URI igual.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void cacheRenderedThumbnail(Long postId, byte[] imageBytes, String contentType) {
+        Post post = posts.findById(postId).orElse(null);
+        if (post == null) {
+            return;
+        }
+        boolean alreadyCached = mediaAssets.findByPostId(postId).stream()
+                .anyMatch(a -> a.getKind() == MediaKind.THUMBNAIL);
+        if (alreadyCached) {
+            return;
+        }
+        cacheThumbnail(post, imageBytes, contentType);
     }
 
     /** ¿El post ya tiene una miniatura cacheada? Evita re-descargar/duplicar en cada corrida (TAREA F). */

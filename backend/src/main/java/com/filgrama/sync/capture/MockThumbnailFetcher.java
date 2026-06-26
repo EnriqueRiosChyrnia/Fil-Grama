@@ -1,6 +1,7 @@
 package com.filgrama.sync.capture;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Optional;
 
 import org.springframework.context.annotation.Profile;
@@ -22,5 +23,10 @@ public class MockThumbnailFetcher implements ThumbnailFetcher {
         }
         byte[] bytes = ("MOCK_THUMB:" + url).getBytes(StandardCharsets.UTF_8);
         return Optional.of(new Fetched(bytes, "image/jpeg"));
+    }
+
+    @Override
+    public Optional<Fetched> fetch(String url, Duration requestTimeout) {
+        return fetch(url);
     }
 }
