@@ -29,6 +29,8 @@ import com.filgrama.account.event.AccountConnectedEvent;
 
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
+import com.filgrama.account.dto.ReconnectResponse;
+import com.filgrama.connectlink.ConnectLinkService;
 import com.filgrama.domain.AccountCredential;
 import com.filgrama.domain.Client;
 import com.filgrama.domain.SocialAccount;
@@ -40,9 +42,11 @@ import com.filgrama.oauth.OAuthProfile;
 import com.filgrama.oauth.OAuthProvider;
 import com.filgrama.oauth.OAuthProviderRegistry;
 import com.filgrama.oauth.OAuthRefreshResult;
+import com.filgrama.oauth.TokenRevokedException;
 import com.filgrama.oauth.config.OAuthProperties;
 import com.filgrama.oauth.crypto.TokenCipher;
 import com.filgrama.oauth.provider.MockOAuthProvider;
+import com.filgrama.oauth.state.OAuthOrigin;
 import com.filgrama.oauth.state.OAuthStateService;
 import com.filgrama.repository.AccountCredentialRepository;
 import com.filgrama.repository.ClientRepository;
@@ -57,10 +61,13 @@ class AccountServiceTest {
 
     private static final String STATE_SECRET = "wmKWIhsMq9NtiXJnItX8oVx4u01AQ6MkjccOO0OtD50=";
 
+    private static final String CONNECT_DONE = "http://front.local/connect/done";
+
     @Mock SocialAccountRepository accountRepo;
     @Mock AccountCredentialRepository credentialRepo;
     @Mock ClientRepository clientRepo;
     @Mock ApplicationEventPublisher events;
+    @Mock ConnectLinkService connectLinkService;
 
     private final TokenCipher cipher = new TokenCipher("MjciXevgsHmpyP3wf6vOZRS17GPYQGc7EJwFbeuW9YM=");
     private OAuthStateService stateService;
@@ -71,7 +78,7 @@ class AccountServiceTest {
         stateService = new OAuthStateService(STATE_SECRET, 600L);
         OAuthProviderRegistry registry = new OAuthProviderRegistry(List.of(new MockOAuthProvider()));
         service = new AccountService(accountRepo, credentialRepo, clientRepo, registry,
-                stateService, cipher, new OAuthProperties(), events);
+                stateService, cipher, new OAuthProperties(), events, connectLinkService, CONNECT_DONE);
     }
 
     @Test
@@ -299,12 +306,159 @@ class AccountServiceTest {
         assertThatThrownBy(() -> service.disconnect(404L)).isInstanceOf(ApiException.class);
     }
 
+    // ---- CV2: reconectar inteligente ----
+
+    @Test
+    void reconnectTokenVivoReactivaSinOAuth() {
+        SocialAccount acc = new SocialAccount();
+        acc.setId(50L);
+        acc.setPlatform(Platform.TIKTOK);
+        acc.setStatus(AccountStatus.DISCONNECTED);
+        when(accountRepo.findById(50L)).thenReturn(Optional.of(acc));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountCredential cred = new AccountCredential();
+        cred.setAccountId(50L);
+        cred.setAccessTokenEnc(cipher.encrypt("old-access"));
+        cred.setRefreshTokenEnc(cipher.encrypt("old-refresh"));
+        when(credentialRepo.findById(50L)).thenReturn(Optional.of(cred));
+        when(credentialRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        ReconnectResponse resp = service.reconnect(50L);
+
+        assertThat(resp.status()).isEqualTo("CONNECTED");
+        assertThat(resp.requiresReauth()).isFalse();
+        assertThat(acc.getStatus()).isEqualTo(AccountStatus.CONNECTED);
+        // Re-cifró el token nuevo del refresh (mock) — sin pasar por OAuth ni molestar al cliente.
+        assertThat(cipher.decrypt(cred.getAccessTokenEnc())).isEqualTo("mock-access-refreshed");
+        verify(credentialRepo).save(cred);
+    }
+
+    @Test
+    void reconnectTokenMuertoMarcaErrorYRequiresReauth() {
+        AccountService svc = new AccountService(accountRepo, credentialRepo, clientRepo,
+                new OAuthProviderRegistry(List.of(new RevokingProvider())),
+                stateService, cipher, new OAuthProperties(), events, connectLinkService, CONNECT_DONE);
+
+        SocialAccount acc = new SocialAccount();
+        acc.setId(51L);
+        acc.setPlatform(Platform.TIKTOK);
+        acc.setStatus(AccountStatus.DISCONNECTED);
+        when(accountRepo.findById(51L)).thenReturn(Optional.of(acc));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountCredential cred = new AccountCredential();
+        cred.setAccountId(51L);
+        cred.setAccessTokenEnc(cipher.encrypt("old-access"));
+        cred.setRefreshTokenEnc(cipher.encrypt("old-refresh"));
+        when(credentialRepo.findById(51L)).thenReturn(Optional.of(cred));
+
+        ReconnectResponse resp = svc.reconnect(51L);
+
+        assertThat(resp.status()).isEqualTo("ERROR");
+        assertThat(resp.requiresReauth()).isTrue();
+        assertThat(acc.getStatus()).isEqualTo(AccountStatus.ERROR);
+        verify(credentialRepo, never()).save(any()); // token muerto: no re-cifra nada
+    }
+
+    @Test
+    void reconnectSinCredencialMarcaError() {
+        SocialAccount acc = new SocialAccount();
+        acc.setId(52L);
+        acc.setPlatform(Platform.TIKTOK);
+        acc.setStatus(AccountStatus.DISCONNECTED);
+        when(accountRepo.findById(52L)).thenReturn(Optional.of(acc));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(credentialRepo.findById(52L)).thenReturn(Optional.empty());
+
+        ReconnectResponse resp = service.reconnect(52L);
+
+        assertThat(resp.status()).isEqualTo("ERROR");
+        assertThat(resp.requiresReauth()).isTrue();
+        assertThat(acc.getStatus()).isEqualTo(AccountStatus.ERROR);
+    }
+
+    // ---- CV2: dar de baja (admin) ----
+
+    @Test
+    void removeRevocaBorraCredencialYDejaRemoved() {
+        SocialAccount acc = new SocialAccount();
+        acc.setId(60L);
+        acc.setPlatform(Platform.TIKTOK);
+        acc.setStatus(AccountStatus.CONNECTED);
+        when(accountRepo.findById(60L)).thenReturn(Optional.of(acc));
+        when(accountRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AccountCredential cred = new AccountCredential();
+        cred.setAccountId(60L);
+        cred.setAccessTokenEnc(cipher.encrypt("acc"));
+        when(credentialRepo.findById(60L)).thenReturn(Optional.of(cred));
+
+        service.remove(60L);
+
+        assertThat(acc.getStatus()).isEqualTo(AccountStatus.REMOVED);
+        verify(credentialRepo).deleteById(60L);              // borra la credencial
+        verify(connectLinkService).revokeByExpectedAccount(60L); // invalida links pendientes
+        verify(accountRepo).save(acc);
+    }
+
+    // ---- CV2: callback con origin=LINK redirige a la página pública ----
+
+    @Test
+    void callbackOriginLinkRedirigeAPaginaPublicaDeExito() {
+        when(accountRepo.findByPlatformAndExternalAccountId(eq(Platform.TIKTOK), anyString()))
+                .thenReturn(Optional.empty());
+        when(accountRepo.save(any())).thenAnswer(inv -> {
+            SocialAccount a = inv.getArgument(0);
+            a.setId(70L);
+            return a;
+        });
+        when(credentialRepo.findById(70L)).thenReturn(Optional.empty());
+
+        String state = stateService.issue(1L, Platform.TIKTOK, 7L, null, OAuthOrigin.LINK);
+        String target = service.completeCallback("tiktok", "good-code", state);
+
+        assertThat(target).startsWith(CONNECT_DONE).contains("status=ok").doesNotContain("accountId=");
+    }
+
+    @Test
+    void callbackOriginLinkErrorRedirigeAPaginaPublicaDeError() {
+        // code vacío → el canje falla → página pública de error con reason (no el redirect del front APP).
+        String state = stateService.issue(1L, Platform.TIKTOK, 7L, null, OAuthOrigin.LINK);
+        String target = service.completeCallback("tiktok", "", state);
+
+        assertThat(target).startsWith(CONNECT_DONE).contains("status=error").contains("reason=exchange_failed");
+    }
+
+    /** Provider de prueba: el refresh falla como si la autorización estuviera revocada. */
+    private static final class RevokingProvider implements OAuthProvider {
+        @Override
+        public boolean supports(Platform platform) {
+            return true;
+        }
+
+        @Override
+        public String buildAuthorizationUrl(Platform platform, String state) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public OAuthExchangeResult exchangeCode(Platform platform, String code) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public OAuthRefreshResult refreshToken(Platform platform, String accessToken, String refreshToken) {
+            throw new TokenRevokedException("autorización revocada (test)");
+        }
+    }
+
     @Test
     void refreshTokenAlsoCorrectsDisplayNameAndHandle() {
         // TAREA A: el refresh/sync corrige el nombre de cuentas viejas (ej. account 17) sin reconectar.
         AccountService svc = new AccountService(accountRepo, credentialRepo, clientRepo,
                 new OAuthProviderRegistry(List.of(new ProfileFakeProvider())),
-                stateService, cipher, new OAuthProperties(), events);
+                stateService, cipher, new OAuthProperties(), events, connectLinkService, CONNECT_DONE);
 
         SocialAccount account = new SocialAccount();
         account.setId(17L);
