@@ -59,6 +59,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/oauth/callback/**",
+                                // Link compartible de conexión de cuentas (CV): endpoints públicos sin auth.
+                                "/api/v1/public/**",
                                 // OpenAPI / Swagger UI (springdoc) — públicos para el codegen del front (orval).
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
