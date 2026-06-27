@@ -65,6 +65,17 @@ public class OAuthStateService {
      * una <b>reconexión</b>: el callback exigirá que el open_id devuelto coincida (TAREA B).
      */
     public String issue(Long clientId, Platform platform, Long userId, String expectedExternalAccountId) {
+        return issue(clientId, platform, userId, expectedExternalAccountId, OAuthOrigin.APP);
+    }
+
+    /**
+     * Emite un {@code state} firmado con TTL corto fijando el {@link OAuthOrigin}. {@code APP}: la
+     * agencia inició el flujo desde la app; {@code LINK}: vino de un link compartible (el callback
+     * redirige a una página pública). Los overloads existentes delegan con {@code origin = APP}
+     * (back-compat: nada que ya emite cambia). spec/09 §Link compartible.
+     */
+    public String issue(Long clientId, Platform platform, Long userId, String expectedExternalAccountId,
+            OAuthOrigin origin) {
         purgeExpired();
         Instant now = Instant.now();
         return Jwts.builder()
@@ -73,6 +84,7 @@ public class OAuthStateService {
                 .claim("platform", platform.name())
                 .claim("userId", userId)
                 .claim("expectedExt", expectedExternalAccountId)
+                .claim("origin", origin.name())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key)
@@ -113,7 +125,9 @@ public class OAuthStateService {
         Long userId = rawUser == null ? null : ((Number) rawUser).longValue();
         Platform platform = Platform.valueOf(claims.get("platform", String.class));
         String expectedExt = claims.get("expectedExt", String.class);
-        return new OAuthState(clientId, platform, userId, nonce, expectedExt);
+        String rawOrigin = claims.get("origin", String.class);
+        OAuthOrigin origin = rawOrigin == null ? OAuthOrigin.APP : OAuthOrigin.valueOf(rawOrigin);
+        return new OAuthState(clientId, platform, userId, nonce, expectedExt, origin);
     }
 
     private void purgeExpired() {

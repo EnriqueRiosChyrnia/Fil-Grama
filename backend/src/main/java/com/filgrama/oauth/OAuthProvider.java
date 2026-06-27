@@ -25,6 +25,16 @@ public interface OAuthProvider {
     String buildAuthorizationUrl(Platform platform, String state);
 
     /**
+     * Igual que {@link #buildAuthorizationUrl(Platform, String)} pero pudiendo <b>forzar la pantalla
+     * de consentimiento</b> ({@code forceConsent}). En TikTok agrega {@code disable_auto_auth=1} para
+     * evitar el auto-grant silencioso de la sesión activa (reconexión / dev). El default delega en la
+     * variante de 2 args para no romper a las redes que no lo soportan (Meta/Mock). spec/09 §TikTok.
+     */
+    default String buildAuthorizationUrl(Platform platform, String state, boolean forceConsent) {
+        return buildAuthorizationUrl(platform, state);
+    }
+
+    /**
      * Canjea el {@code code} del callback por un token de larga duración y detecta
      * tipo de cuenta + capabilities. Lanza {@link OAuthException} si el canje falla
      * y {@link TokenRevokedException} si la autorización fue revocada.
@@ -46,5 +56,14 @@ public interface OAuthProvider {
      */
     default Optional<OAuthProfile> fetchProfile(Platform platform, String accessToken) {
         return Optional.empty();
+    }
+
+    /**
+     * Revoca el acceso en la red durante la baja de cuenta (spec/09 §Ciclo de vida). <b>Best-effort</b>:
+     * cualquier falla (red, 4xx, envelope de error) se loguea y <b>no</b> se propaga — la baja borra la
+     * credencial local igual. El default es no-op (Meta/Mock; revocar Meta es opcional en v1); TikTok lo
+     * sobreescribe ({@code POST /v2/oauth/revoke/}).
+     */
+    default void revokeToken(Platform platform, String accessToken, String refreshToken) {
     }
 }

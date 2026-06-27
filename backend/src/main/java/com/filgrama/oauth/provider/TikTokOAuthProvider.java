@@ -71,15 +71,24 @@ public class TikTokOAuthProvider implements OAuthProvider {
 
     @Override
     public String buildAuthorizationUrl(Platform platform, String state) {
+        return buildAuthorizationUrl(platform, state, false);
+    }
+
+    @Override
+    public String buildAuthorizationUrl(Platform platform, String state, boolean forceConsent) {
         OAuthProperties.TikTok tk = props.getTiktok();
-        return UriComponentsBuilder.fromUriString(tk.getAuthorizeUrl())
+        UriComponentsBuilder url = UriComponentsBuilder.fromUriString(tk.getAuthorizeUrl())
                 .queryParam("client_key", tk.getClientKey())
                 .queryParam("scope", String.join(",", tk.getScopes()))
                 .queryParam("response_type", "code")
                 .queryParam("redirect_uri", redirectUri(platform))
-                .queryParam("state", state)
-                .encode()
-                .toUriString();
+                .queryParam("state", state);
+        // Anti auto-grant de la sesión activa: forzá la pantalla en reconexión (forceConsent) o cuando
+        // la config lo pide para todo connect (dev). spec/09 §TikTok.
+        if (forceConsent || tk.isDisableAutoAuth()) {
+            url.queryParam("disable_auto_auth", 1);
+        }
+        return url.encode().toUriString();
     }
 
     @Override
@@ -166,6 +175,39 @@ public class TikTokOAuthProvider implements OAuthProvider {
                 "bearer",
                 OAuthHttpSupport.text(tok, "scope"),
                 OAuthHttpSupport.expiresAt(tok, "expires_in", ACCESS_TTL_SECONDS));
+    }
+
+    /**
+     * Revoca el access token en TikTok ({@code POST /v2/oauth/revoke/}, form-urlencoded:
+     * {@code client_key}, {@code client_secret}, {@code token}). <b>Best-effort</b>: cualquier falla
+     * (red, 4xx, envelope de error) se loguea en {@code warn} y <b>no</b> se propaga, para no bloquear
+     * la baja (la credencial local se borra igual). El {@code client_secret} viaja solo server-side y
+     * nunca se loguea.
+     */
+    @Override
+    public void revokeToken(Platform platform, String accessToken, String refreshToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return;
+        }
+        OAuthProperties.TikTok tk = props.getTiktok();
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("client_key", tk.getClientKey());
+        form.add("client_secret", tk.getClientSecret());
+        form.add("token", accessToken);
+        try {
+            String body = http.post().uri(tk.getRevokeUrl())
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve().body(String.class);
+            RuntimeException mapped = mapError(safeTree(body), false); // 200 + cuerpo de error
+            if (mapped != null) {
+                throw mapped;
+            }
+        } catch (RuntimeException e) {
+            // 4xx (RestClientResponseException), timeout/IO (ResourceAccessException), envelope de error
+            // (OAuthException) y JSON ilegible caen acá: la baja no se bloquea.
+            log.warn("TikTok revoke falló (best-effort, la baja continúa): {}", e.getMessage());
+        }
     }
 
     // ---- HTTP / errores ----

@@ -74,4 +74,20 @@ class OAuthStateServiceTest {
         assertThat(parsed.clientId()).isEqualTo(5L);
         assertThat(parsed.platform()).isEqualTo(Platform.TIKTOK);
     }
+
+    // ---- CV1: origin del state (APP vs LINK) ----
+
+    @Test
+    void issueViejoDevuelveOriginApp() {
+        String state = service.issue(5L, Platform.TIKTOK, 1L);
+        assertThat(service.consume(state).origin()).isEqualTo(OAuthOrigin.APP);
+    }
+
+    @Test
+    void issueConLinkRoundTripDevuelveOriginLink() {
+        String state = service.issue(5L, Platform.TIKTOK, 1L, "open-id", OAuthOrigin.LINK);
+        OAuthState parsed = service.consume(state);
+        assertThat(parsed.origin()).isEqualTo(OAuthOrigin.LINK);
+        assertThat(parsed.expectedExternalAccountId()).isEqualTo("open-id");
+    }
 }

@@ -50,6 +50,14 @@ public class OAuthProperties {
         private String tokenUrl = "https://open.tiktokapis.com/v2/oauth/token/";
         /** user-info para resolver display_name/username/avatar reales (scope {@code user.info.profile}). */
         private String userInfoUrl = "https://open.tiktokapis.com/v2/user/info/";
+        /** Revocación best-effort del token en la baja de cuenta (spec/09 §Ciclo de vida). */
+        private String revokeUrl = "https://open.tiktokapis.com/v2/oauth/revoke/";
+        /**
+         * Fuerza {@code disable_auto_auth=1} en <b>todo</b> connect de TikTok (no solo reconexión).
+         * Útil en dev/UX para evitar el auto-grant silencioso de la sesión activa del navegador.
+         * spec/09 §TikTok: <i>"When set to 1, always displays the authorization page."</i>
+         */
+        private boolean disableAutoAuth = false;
         /** spec/09 §TikTok. */
         private List<String> scopes = List.of(
                 "user.info.basic", "user.info.profile", "user.info.stats", "video.list");
