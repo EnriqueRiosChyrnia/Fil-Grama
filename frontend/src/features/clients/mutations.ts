@@ -14,12 +14,22 @@ import {
   postClients,
   getPostClientsClientIdAccountsConnectPlatformUrl,
   postAccountsIdDisconnect,
+  postAccountsIdReconnect,
+  deleteAccountsId,
+  postClientsClientIdConnectLinks,
   getGetClientsQueryKey,
   getGetClientsIdQueryKey,
   getGetClientsClientIdAccountsQueryKey,
 } from '../../api/generated/endpoints';
-import type { CreateClientRequest, ClientResponse, ConnectResponse } from '../../api/generated/model';
-import { ApiError, orvalFetch, coreRequest, API_BASE_URL } from '../../lib/api';
+import type {
+  CreateClientRequest,
+  ClientResponse,
+  ConnectResponse,
+  ReconnectResponse,
+  ConnectLinkResponse,
+  CreateConnectLinkRequest,
+} from '../../api/generated/model';
+import { ApiError, orvalFetch } from '../../lib/api';
 
 function humanError(e: unknown): string {
   if (e instanceof ApiError) return e.humanMessage;
@@ -29,29 +39,15 @@ function humanError(e: unknown): string {
 
 /**
  * Endpoints del CICLO DE VIDA de cuenta + LINK COMPARTIBLE (track CV3, spec/09 §
- * "Ciclo de vida" y "Link compartible"; contratos en spec/03). El backend CV1/CV2
- * todavía no está mergeado, así que `reconnect`, `DELETE /accounts/{id}` y
- * `connect-links` NO existen aún en `api/generated`: los tipamos a mano contra los
- * contratos y los llamamos vía `coreRequest` (Bearer + refresh + ApiError, igual que
- * el mutator de orval). Cuando se mergee el backend → `npm run codegen` y migrar a los
- * hooks generados (`usePostAccountsIdReconnect`, etc.).
+ * "Ciclo de vida" y "Link compartible"; contratos en spec/03). El backend CV1/CV2 ya
+ * está mergeado: `reconnect`, `DELETE /accounts/{id}` y `connect-links` viven en
+ * `api/generated`. Seguimos el PATRÓN BENDECIDO (orval genera los POST/DELETE como
+ * `useQuery`, semántica equivocada para acciones): consumimos las FUNCIONES crudas
+ * generadas (`postAccountsIdReconnect`, `deleteAccountsId`,
+ * `postClientsClientIdConnectLinks`) —pasan por el mutator (Bearer + refresh +
+ * ApiError)— y las envolvemos acá en `useMutation`. Tipos de respuesta:
+ * `ReconnectResponse` / `ConnectLinkResponse` generados.
  */
-
-/** `POST /accounts/{id}/reconnect` → reconexión inteligente. */
-export interface ReconnectResult {
-  /** Estado resultante: `CONNECTED` cuando el refresh reactivó sin OAuth. */
-  status?: string;
-  /** `true` si el token murió y hace falta re-autorización (OAuth nuevo o link). */
-  requiresReauth?: boolean;
-  authorizationUrl?: string;
-}
-
-/** `POST /clients/{clientId}/connect-links` → link compartible recién creado (token raw solo acá). */
-export interface CreatedConnectLink {
-  token: string;
-  url: string;
-  expiresAt?: string;
-}
 
 /** Alta de cliente (paso 1 del wizard). Devuelve el cliente creado (con id). */
 export function useCreateClient() {
@@ -138,8 +134,9 @@ export function useConnectFlow(clientId: number) {
 export function useReconnectAccount(clientId: number) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (accountId: number): Promise<ReconnectResult> => {
-      return coreRequest<ReconnectResult>(`${API_BASE_URL}/accounts/${accountId}/reconnect`, { method: 'POST' });
+    mutationFn: async (accountId: number): Promise<ReconnectResponse> => {
+      const res = await postAccountsIdReconnect(accountId);
+      return res.data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getGetClientsClientIdAccountsQueryKey(clientId) });
@@ -158,7 +155,7 @@ export function useDeleteAccount(clientId: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (accountId: number): Promise<void> => {
-      await coreRequest<void>(`${API_BASE_URL}/accounts/${accountId}`, { method: 'DELETE' });
+      await deleteAccountsId(accountId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: getGetClientsClientIdAccountsQueryKey(clientId) });
@@ -175,11 +172,9 @@ export function useDeleteAccount(clientId: number) {
  */
 export function useCreateConnectLink(clientId: number) {
   return useMutation({
-    mutationFn: async (body: { platform?: string; accountId?: number }): Promise<CreatedConnectLink> => {
-      return coreRequest<CreatedConnectLink>(`${API_BASE_URL}/clients/${clientId}/connect-links`, {
-        method: 'POST',
-        body: JSON.stringify(body ?? {}),
-      });
+    mutationFn: async (body: CreateConnectLinkRequest): Promise<ConnectLinkResponse> => {
+      const res = await postClientsClientIdConnectLinks(clientId, body);
+      return res.data;
     },
   });
 }

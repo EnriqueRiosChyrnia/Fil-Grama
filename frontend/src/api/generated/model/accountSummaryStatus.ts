@@ -13,4 +13,5 @@ export const AccountSummaryStatus = {
   DISCONNECTED: 'DISCONNECTED',
   ERROR: 'ERROR',
   UNSUPPORTED: 'UNSUPPORTED',
+  REMOVED: 'REMOVED',
 } as const;

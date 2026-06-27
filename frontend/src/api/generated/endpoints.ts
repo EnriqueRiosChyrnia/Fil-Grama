@@ -22,12 +22,16 @@ import type {
 import type {
   AccountReportResponse,
   AccountResponse,
+  AuthorizationUrlResponse,
   BatchReportRequest,
   BatchReportResponse,
   ClientDetailResponse,
   ClientResponse,
+  ConnectLinkResponse,
+  ConnectLinkSummary,
   ConnectResponse,
   CreateClientRequest,
+  CreateConnectLinkRequest,
   CreateUserRequest,
   GenerateReportRequest,
   GetAccountsIdPostsParams,
@@ -51,6 +55,8 @@ import type {
   PostReportResponse,
   PreviewReportRequest,
   PriorityClientRequest,
+  PublicLinkInfo,
+  ReconnectResponse,
   RefreshRequest,
   ReportData,
   ReportResource,
@@ -622,6 +628,121 @@ export function usePostSyncRun<TData = Awaited<ReturnType<typeof postSyncRun>>, 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getPostSyncRunQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postPublicConnectLinksTokenConnectPlatformResponse200 = {
+  data: AuthorizationUrlResponse
+  status: 200
+}
+
+export type postPublicConnectLinksTokenConnectPlatformResponseSuccess = (postPublicConnectLinksTokenConnectPlatformResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postPublicConnectLinksTokenConnectPlatformResponse = (postPublicConnectLinksTokenConnectPlatformResponseSuccess)
+
+export const getPostPublicConnectLinksTokenConnectPlatformUrl = (token: string,
+    platform: string,) => {
+
+
+
+
+  return `/api/v1/public/connect-links/${token}/connect/${platform}`
+}
+
+export const postPublicConnectLinksTokenConnectPlatform = async (token: string,
+    platform: string, options?: RequestInit): Promise<postPublicConnectLinksTokenConnectPlatformResponse> => {
+
+  return orvalFetch<postPublicConnectLinksTokenConnectPlatformResponse>(getPostPublicConnectLinksTokenConnectPlatformUrl(token,platform),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPostPublicConnectLinksTokenConnectPlatformQueryKey = (token: string,
+    platform: string,) => {
+    return [
+    'POST', `/api/v1/public/connect-links/${token}/connect/${platform}`
+    ] as const;
+    }
+
+
+export const getPostPublicConnectLinksTokenConnectPlatformQueryOptions = <TData = Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError = unknown>(token: string,
+    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostPublicConnectLinksTokenConnectPlatformQueryKey(token,platform);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>> = ({ signal }) => postPublicConnectLinksTokenConnectPlatform(token,platform, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined && platform !== null && platform !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostPublicConnectLinksTokenConnectPlatformQueryResult = NonNullable<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>>
+export type PostPublicConnectLinksTokenConnectPlatformQueryError = unknown
+
+
+export function usePostPublicConnectLinksTokenConnectPlatform<TData = Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError = unknown>(
+ token: string,
+    platform: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>,
+          TError,
+          Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostPublicConnectLinksTokenConnectPlatform<TData = Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError = unknown>(
+ token: string,
+    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>,
+          TError,
+          Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostPublicConnectLinksTokenConnectPlatform<TData = Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError = unknown>(
+ token: string,
+    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostPublicConnectLinksTokenConnectPlatform<TData = Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError = unknown>(
+ token: string,
+    platform: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postPublicConnectLinksTokenConnectPlatform>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostPublicConnectLinksTokenConnectPlatformQueryOptions(token,platform,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -1432,6 +1553,227 @@ export function usePostClientsClientIdReportsPreview<TData = Awaited<ReturnType<
 
 
 
+export type getClientsClientIdConnectLinksResponse200 = {
+  data: ConnectLinkSummary[]
+  status: 200
+}
+
+export type getClientsClientIdConnectLinksResponseSuccess = (getClientsClientIdConnectLinksResponse200) & {
+  headers: Headers;
+};
+;
+
+export type getClientsClientIdConnectLinksResponse = (getClientsClientIdConnectLinksResponseSuccess)
+
+export const getGetClientsClientIdConnectLinksUrl = (clientId: number,) => {
+
+
+
+
+  return `/api/v1/clients/${clientId}/connect-links`
+}
+
+export const getClientsClientIdConnectLinks = async (clientId: number, options?: RequestInit): Promise<getClientsClientIdConnectLinksResponse> => {
+
+  return orvalFetch<getClientsClientIdConnectLinksResponse>(getGetClientsClientIdConnectLinksUrl(clientId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetClientsClientIdConnectLinksQueryKey = (clientId: number,) => {
+    return [
+    `/api/v1/clients/${clientId}/connect-links`
+    ] as const;
+    }
+
+
+export const getGetClientsClientIdConnectLinksQueryOptions = <TData = Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError = unknown>(clientId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetClientsClientIdConnectLinksQueryKey(clientId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>> = ({ signal }) => getClientsClientIdConnectLinks(clientId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: clientId !== null && clientId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetClientsClientIdConnectLinksQueryResult = NonNullable<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>>
+export type GetClientsClientIdConnectLinksQueryError = unknown
+
+
+export function useGetClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>,
+          TError,
+          Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>,
+          TError,
+          Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetClientsClientIdConnectLinksQueryOptions(clientId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postClientsClientIdConnectLinksResponse201 = {
+  data: ConnectLinkResponse
+  status: 201
+}
+
+export type postClientsClientIdConnectLinksResponseSuccess = (postClientsClientIdConnectLinksResponse201) & {
+  headers: Headers;
+};
+;
+
+export type postClientsClientIdConnectLinksResponse = (postClientsClientIdConnectLinksResponseSuccess)
+
+export const getPostClientsClientIdConnectLinksUrl = (clientId: number,) => {
+
+
+
+
+  return `/api/v1/clients/${clientId}/connect-links`
+}
+
+export const postClientsClientIdConnectLinks = async (clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest, options?: RequestInit): Promise<postClientsClientIdConnectLinksResponse> => {
+
+  return orvalFetch<postClientsClientIdConnectLinksResponse>(getPostClientsClientIdConnectLinksUrl(clientId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createConnectLinkRequest)
+  }
+);}
+
+
+
+
+
+export const getPostClientsClientIdConnectLinksQueryKey = (clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest,) => {
+    return [
+    'POST', `/api/v1/clients/${clientId}/connect-links`, createConnectLinkRequest
+    ] as const;
+    }
+
+
+export const getPostClientsClientIdConnectLinksQueryOptions = <TData = Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError = unknown>(clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostClientsClientIdConnectLinksQueryKey(clientId,createConnectLinkRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>> = ({ signal }) => postClientsClientIdConnectLinks(clientId,createConnectLinkRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: clientId !== null && clientId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostClientsClientIdConnectLinksQueryResult = NonNullable<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>>
+export type PostClientsClientIdConnectLinksQueryError = unknown
+
+
+export function usePostClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number,
+    createConnectLinkRequest: undefined |  CreateConnectLinkRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>,
+          TError,
+          Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>,
+          TError,
+          Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostClientsClientIdConnectLinks<TData = Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError = unknown>(
+ clientId: number,
+    createConnectLinkRequest?: CreateConnectLinkRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postClientsClientIdConnectLinks>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostClientsClientIdConnectLinksQueryOptions(clientId,createConnectLinkRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type postClientsClientIdAccountsConnectPlatformResponse200 = {
   data: ConnectResponse
   status: 200
@@ -1978,6 +2320,113 @@ export function usePostAccountsIdRefreshToken<TData = Awaited<ReturnType<typeof 
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getPostAccountsIdRefreshTokenQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postAccountsIdReconnectResponse200 = {
+  data: ReconnectResponse
+  status: 200
+}
+
+export type postAccountsIdReconnectResponseSuccess = (postAccountsIdReconnectResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postAccountsIdReconnectResponse = (postAccountsIdReconnectResponseSuccess)
+
+export const getPostAccountsIdReconnectUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/accounts/${id}/reconnect`
+}
+
+export const postAccountsIdReconnect = async (id: number, options?: RequestInit): Promise<postAccountsIdReconnectResponse> => {
+
+  return orvalFetch<postAccountsIdReconnectResponse>(getPostAccountsIdReconnectUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPostAccountsIdReconnectQueryKey = (id: number,) => {
+    return [
+    'POST', `/api/v1/accounts/${id}/reconnect`
+    ] as const;
+    }
+
+
+export const getPostAccountsIdReconnectQueryOptions = <TData = Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError = unknown>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostAccountsIdReconnectQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postAccountsIdReconnect>>> = ({ signal }) => postAccountsIdReconnect(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostAccountsIdReconnectQueryResult = NonNullable<Awaited<ReturnType<typeof postAccountsIdReconnect>>>
+export type PostAccountsIdReconnectQueryError = unknown
+
+
+export function usePostAccountsIdReconnect<TData = Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError = unknown>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postAccountsIdReconnect>>,
+          TError,
+          Awaited<ReturnType<typeof postAccountsIdReconnect>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostAccountsIdReconnect<TData = Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postAccountsIdReconnect>>,
+          TError,
+          Awaited<ReturnType<typeof postAccountsIdReconnect>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostAccountsIdReconnect<TData = Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostAccountsIdReconnect<TData = Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postAccountsIdReconnect>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostAccountsIdReconnectQueryOptions(id,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -2869,6 +3318,113 @@ export function useGetSyncRunsId<TData = Awaited<ReturnType<typeof getSyncRunsId
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getGetSyncRunsIdQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type getPublicConnectLinksTokenResponse200 = {
+  data: PublicLinkInfo
+  status: 200
+}
+
+export type getPublicConnectLinksTokenResponseSuccess = (getPublicConnectLinksTokenResponse200) & {
+  headers: Headers;
+};
+;
+
+export type getPublicConnectLinksTokenResponse = (getPublicConnectLinksTokenResponseSuccess)
+
+export const getGetPublicConnectLinksTokenUrl = (token: string,) => {
+
+
+
+
+  return `/api/v1/public/connect-links/${token}`
+}
+
+export const getPublicConnectLinksToken = async (token: string, options?: RequestInit): Promise<getPublicConnectLinksTokenResponse> => {
+
+  return orvalFetch<getPublicConnectLinksTokenResponse>(getGetPublicConnectLinksTokenUrl(token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicConnectLinksTokenQueryKey = (token: string,) => {
+    return [
+    `/api/v1/public/connect-links/${token}`
+    ] as const;
+    }
+
+
+export const getGetPublicConnectLinksTokenQueryOptions = <TData = Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError = unknown>(token: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicConnectLinksTokenQueryKey(token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicConnectLinksToken>>> = ({ signal }) => getPublicConnectLinksToken(token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: token !== null && token !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetPublicConnectLinksTokenQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicConnectLinksToken>>>
+export type GetPublicConnectLinksTokenQueryError = unknown
+
+
+export function useGetPublicConnectLinksToken<TData = Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError = unknown>(
+ token: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicConnectLinksToken>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicConnectLinksToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicConnectLinksToken<TData = Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError = unknown>(
+ token: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getPublicConnectLinksToken>>,
+          TError,
+          Awaited<ReturnType<typeof getPublicConnectLinksToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetPublicConnectLinksToken<TData = Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError = unknown>(
+ token: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetPublicConnectLinksToken<TData = Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError = unknown>(
+ token: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getPublicConnectLinksToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetPublicConnectLinksTokenQueryOptions(token,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
@@ -4004,6 +4560,113 @@ export function useGetAccountsId<TData = Awaited<ReturnType<typeof getAccountsId
 
 
 
+export type deleteAccountsIdResponse204 = {
+  data: void
+  status: 204
+}
+
+export type deleteAccountsIdResponseSuccess = (deleteAccountsIdResponse204) & {
+  headers: Headers;
+};
+;
+
+export type deleteAccountsIdResponse = (deleteAccountsIdResponseSuccess)
+
+export const getDeleteAccountsIdUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/accounts/${id}`
+}
+
+export const deleteAccountsId = async (id: number, options?: RequestInit): Promise<deleteAccountsIdResponse> => {
+
+  return orvalFetch<deleteAccountsIdResponse>(getDeleteAccountsIdUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteAccountsIdQueryKey = (id: number,) => {
+    return [
+    'DELETE', `/api/v1/accounts/${id}`
+    ] as const;
+    }
+
+
+export const getDeleteAccountsIdQueryOptions = <TData = Awaited<ReturnType<typeof deleteAccountsId>>, TError = unknown>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDeleteAccountsIdQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof deleteAccountsId>>> = ({ signal }) => deleteAccountsId(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DeleteAccountsIdQueryResult = NonNullable<Awaited<ReturnType<typeof deleteAccountsId>>>
+export type DeleteAccountsIdQueryError = unknown
+
+
+export function useDeleteAccountsId<TData = Awaited<ReturnType<typeof deleteAccountsId>>, TError = unknown>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof deleteAccountsId>>,
+          TError,
+          Awaited<ReturnType<typeof deleteAccountsId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDeleteAccountsId<TData = Awaited<ReturnType<typeof deleteAccountsId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof deleteAccountsId>>,
+          TError,
+          Awaited<ReturnType<typeof deleteAccountsId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDeleteAccountsId<TData = Awaited<ReturnType<typeof deleteAccountsId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useDeleteAccountsId<TData = Awaited<ReturnType<typeof deleteAccountsId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteAccountsId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDeleteAccountsIdQueryOptions(id,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type getAccountsIdPostsResponse200 = {
   data: PageResponsePostListItem
   status: 200
@@ -4235,6 +4898,113 @@ export function useDeleteUsersIdPriorityClientsClientId<TData = Awaited<ReturnTy
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getDeleteUsersIdPriorityClientsClientIdQueryOptions(id,clientId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type deleteConnectLinksIdResponse204 = {
+  data: void
+  status: 204
+}
+
+export type deleteConnectLinksIdResponseSuccess = (deleteConnectLinksIdResponse204) & {
+  headers: Headers;
+};
+;
+
+export type deleteConnectLinksIdResponse = (deleteConnectLinksIdResponseSuccess)
+
+export const getDeleteConnectLinksIdUrl = (id: number,) => {
+
+
+
+
+  return `/api/v1/connect-links/${id}`
+}
+
+export const deleteConnectLinksId = async (id: number, options?: RequestInit): Promise<deleteConnectLinksIdResponse> => {
+
+  return orvalFetch<deleteConnectLinksIdResponse>(getDeleteConnectLinksIdUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteConnectLinksIdQueryKey = (id: number,) => {
+    return [
+    'DELETE', `/api/v1/connect-links/${id}`
+    ] as const;
+    }
+
+
+export const getDeleteConnectLinksIdQueryOptions = <TData = Awaited<ReturnType<typeof deleteConnectLinksId>>, TError = unknown>(id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDeleteConnectLinksIdQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof deleteConnectLinksId>>> = ({ signal }) => deleteConnectLinksId(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type DeleteConnectLinksIdQueryResult = NonNullable<Awaited<ReturnType<typeof deleteConnectLinksId>>>
+export type DeleteConnectLinksIdQueryError = unknown
+
+
+export function useDeleteConnectLinksId<TData = Awaited<ReturnType<typeof deleteConnectLinksId>>, TError = unknown>(
+ id: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof deleteConnectLinksId>>,
+          TError,
+          Awaited<ReturnType<typeof deleteConnectLinksId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDeleteConnectLinksId<TData = Awaited<ReturnType<typeof deleteConnectLinksId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof deleteConnectLinksId>>,
+          TError,
+          Awaited<ReturnType<typeof deleteConnectLinksId>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useDeleteConnectLinksId<TData = Awaited<ReturnType<typeof deleteConnectLinksId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useDeleteConnectLinksId<TData = Awaited<ReturnType<typeof deleteConnectLinksId>>, TError = unknown>(
+ id: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof deleteConnectLinksId>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getDeleteConnectLinksIdQueryOptions(id,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 
