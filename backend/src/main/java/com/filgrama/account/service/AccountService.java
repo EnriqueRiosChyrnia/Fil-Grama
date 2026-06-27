@@ -2,7 +2,9 @@ package com.filgrama.account.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,7 +12,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
+import com.filgrama.account.dto.ReconnectResponse;
 import com.filgrama.account.event.AccountConnectedEvent;
+import com.filgrama.connectlink.ConnectLinkService;
 import com.filgrama.domain.AccountCredential;
 import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.AccountStatus;
@@ -27,6 +31,7 @@ import com.filgrama.oauth.TokenRevokedException;
 import com.filgrama.oauth.config.OAuthProperties;
 import com.filgrama.oauth.crypto.TokenCipher;
 import com.filgrama.oauth.state.InvalidStateException;
+import com.filgrama.oauth.state.OAuthOrigin;
 import com.filgrama.oauth.state.OAuthState;
 import com.filgrama.oauth.state.OAuthStateService;
 import com.filgrama.repository.AccountCredentialRepository;
@@ -51,6 +56,9 @@ public class AccountService {
     private final TokenCipher cipher;
     private final OAuthProperties props;
     private final ApplicationEventPublisher events;
+    private final ConnectLinkService connectLinkService;
+    /** Página pública de resultado del flujo por link (éxito/error); el cliente no tiene sesión en la app. */
+    private final String connectDoneUrl;
 
     public AccountService(SocialAccountRepository accountRepo,
                           AccountCredentialRepository credentialRepo,
@@ -59,7 +67,9 @@ public class AccountService {
                           OAuthStateService stateService,
                           TokenCipher cipher,
                           OAuthProperties props,
-                          ApplicationEventPublisher events) {
+                          ApplicationEventPublisher events,
+                          ConnectLinkService connectLinkService,
+                          @Value("${app.connect-done-url:http://localhost:5173/connect/done}") String connectDoneUrl) {
         this.accountRepo = accountRepo;
         this.credentialRepo = credentialRepo;
         this.clientRepo = clientRepo;
@@ -68,6 +78,8 @@ public class AccountService {
         this.cipher = cipher;
         this.props = props;
         this.events = events;
+        this.connectLinkService = connectLinkService;
+        this.connectDoneUrl = connectDoneUrl;
     }
 
     // ---- Lecturas (sin tokens) ----
@@ -124,7 +136,10 @@ public class AccountService {
         }
 
         String state = stateService.issue(clientId, platform, userId, expectedExternalAccountId);
-        String authorizationUrl = providers.forPlatform(platform).buildAuthorizationUrl(platform, state);
+        // Reconexión (cuenta esperada) fuerza la pantalla de consentimiento (disable_auto_auth en TikTok).
+        boolean forceConsent = expectedAccountId != null;
+        String authorizationUrl = providers.forPlatform(platform)
+                .buildAuthorizationUrl(platform, state, forceConsent);
         return new ConnectResponse(authorizationUrl, state);
     }
 
@@ -153,18 +168,20 @@ public class AccountService {
         } catch (InvalidStateException e) {
             return errorRedirect("invalid_state");
         }
+        // El state marca si el flujo vino de un connect-link → elige la página de resultado.
+        OAuthOrigin origin = validated.origin();
         // El state ata el callback a su red de origen.
         if (validated.platform() != platform) {
-            return errorRedirect("invalid_state");
+            return errorRedirect("invalid_state", origin);
         }
 
         OAuthExchangeResult result;
         try {
             result = providers.forPlatform(platform).exchangeCode(platform, code);
         } catch (TokenRevokedException e) {
-            return errorRedirect("token_revoked");
+            return errorRedirect("token_revoked", origin);
         } catch (OAuthException e) {
-            return errorRedirect("exchange_failed");
+            return errorRedirect("exchange_failed", origin);
         }
 
         // TAREA B: reconexión con cuenta esperada → el open_id devuelto DEBE coincidir.
@@ -181,7 +198,7 @@ public class AccountService {
         if (meta && result.accountType() == AccountType.PERSONAL) {
             upsertAccount(validated.clientId(), platform, result,
                     AccountStatus.UNSUPPORTED, validated.userId());
-            return errorRedirect("unsupported_personal");
+            return errorRedirect("unsupported_personal", origin);
         }
 
         SocialAccount account = upsertAccount(validated.clientId(), platform, result,
@@ -190,7 +207,7 @@ public class AccountService {
                 result.tokenType(), result.scopes(), result.expiresAt());
         // TAREA A: escaneo inmediato SOLO de esta cuenta (lo dispara el track Sync AFTER_COMMIT).
         events.publishEvent(new AccountConnectedEvent(account.getId()));
-        return successRedirect(account.getId());
+        return successRedirect(account.getId(), origin);
     }
 
     // ---- disconnect ----
@@ -199,6 +216,81 @@ public class AccountService {
     public void disconnect(Long accountId) {
         SocialAccount account = loadAccount(accountId);
         account.setStatus(AccountStatus.DISCONNECTED);
+        accountRepo.save(account);
+    }
+
+    // ---- reconectar inteligente ----
+
+    /**
+     * Reconecta sin molestar al cliente cuando se puede: si hay credencial y la cuenta no está en
+     * {@code ERROR}, intenta un {@code refresh} (mismo patrón que {@link #refreshToken}). Si funciona,
+     * reactiva a {@code CONNECTED} <b>sin OAuth</b>. Si el token murió, no hay credencial o ya estaba en
+     * {@code ERROR}, marca {@code ERROR} y responde {@code requiresReauth} (re-autorización fresca: la hace
+     * la agencia con {@code connect ?accountId=} o el cliente con un connect-link). Ver spec/09 §"Ciclo de vida".
+     */
+    @Transactional
+    public ReconnectResponse reconnect(Long accountId) {
+        SocialAccount account = loadAccount(accountId);
+        Optional<AccountCredential> credOpt = credentialRepo.findById(accountId);
+
+        if (account.getStatus() != AccountStatus.ERROR && credOpt.isPresent()) {
+            AccountCredential cred = credOpt.get();
+            String access = cipher.decrypt(cred.getAccessTokenEnc());
+            String refresh = cred.getRefreshTokenEnc() != null ? cipher.decrypt(cred.getRefreshTokenEnc()) : null;
+            try {
+                OAuthRefreshResult refreshed = providers.forPlatform(account.getPlatform())
+                        .refreshToken(account.getPlatform(), access, refresh);
+                cred.setAccessTokenEnc(cipher.encrypt(refreshed.accessToken()));
+                if (refreshed.refreshToken() != null) { // rotación (TikTok)
+                    cred.setRefreshTokenEnc(cipher.encrypt(refreshed.refreshToken()));
+                }
+                if (refreshed.scopes() != null) {
+                    cred.setScopes(refreshed.scopes());
+                }
+                cred.setExpiresAt(refreshed.expiresAt());
+                cred.setLastRefreshedAt(Instant.now());
+                credentialRepo.save(cred);
+
+                account.setStatus(AccountStatus.CONNECTED);
+                accountRepo.save(account);
+                return new ReconnectResponse(AccountStatus.CONNECTED.name(), false);
+            } catch (OAuthException e) {
+                // Token muerto (revocado/expirado): cae a ERROR + requiresReauth.
+            }
+        }
+
+        account.setStatus(AccountStatus.ERROR);
+        accountRepo.save(account);
+        return new ReconnectResponse(AccountStatus.ERROR.name(), true);
+    }
+
+    // ---- dar de baja [ADMIN] ----
+
+    /**
+     * Da de baja (offboard) una cuenta: revoca el token en la red (<b>best-effort</b>, no bloquea),
+     * borra la credencial, invalida los connect-links pendientes atados a la cuenta y deja la fila en
+     * {@code REMOVED} conservando la historia (snapshots/posts). Re-agregarla luego = connect nuevo
+     * (upsert misma fila). Sólo admin (el endpoint la anota {@code @PreAuthorize}). Ver spec/09 + CU10.
+     */
+    @Transactional
+    public void remove(Long accountId) {
+        SocialAccount account = loadAccount(accountId);
+
+        credentialRepo.findById(accountId).ifPresent(cred -> {
+            try {
+                String access = cipher.decrypt(cred.getAccessTokenEnc());
+                String refresh = cred.getRefreshTokenEnc() != null
+                        ? cipher.decrypt(cred.getRefreshTokenEnc()) : null;
+                providers.forPlatform(account.getPlatform())
+                        .revokeToken(account.getPlatform(), access, refresh);
+            } catch (RuntimeException e) {
+                // Best-effort: si la revocación remota falla, igual se borra la credencial local.
+            }
+            credentialRepo.deleteById(accountId);
+        });
+
+        connectLinkService.revokeByExpectedAccount(accountId);
+        account.setStatus(AccountStatus.REMOVED);
         accountRepo.save(account);
     }
 
@@ -353,5 +445,29 @@ public class AccountService {
         return UriComponentsBuilder.fromUriString(props.getFrontRedirectUrl())
                 .queryParam("error", errorCode)
                 .encode().toUriString();
+    }
+
+    /**
+     * Redirect de éxito según el origen del flujo: {@code LINK} va a la página pública de resultado
+     * ({@code ?status=ok}, el cliente no tiene sesión en la app); {@code APP} usa el redirect del front.
+     */
+    private String successRedirect(Long accountId, OAuthOrigin origin) {
+        if (origin == OAuthOrigin.LINK) {
+            return UriComponentsBuilder.fromUriString(connectDoneUrl)
+                    .queryParam("status", "ok")
+                    .encode().toUriString();
+        }
+        return successRedirect(accountId);
+    }
+
+    /** Redirect de error según el origen: {@code LINK} → página pública ({@code ?status=error&reason=}). */
+    private String errorRedirect(String errorCode, OAuthOrigin origin) {
+        if (origin == OAuthOrigin.LINK) {
+            return UriComponentsBuilder.fromUriString(connectDoneUrl)
+                    .queryParam("status", "error")
+                    .queryParam("reason", errorCode)
+                    .encode().toUriString();
+        }
+        return errorRedirect(errorCode);
     }
 }

@@ -3,8 +3,10 @@ package com.filgrama.account.web;
 import java.util.List;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
+import com.filgrama.account.dto.ReconnectResponse;
 import com.filgrama.account.service.AccountService;
 
 /**
@@ -60,6 +63,23 @@ public class AccountController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void disconnect(@PathVariable Long id) {
         service.disconnect(id);
+    }
+
+    /**
+     * Reconectar inteligente: si el token vive, refresca y reactiva a {@code CONNECTED} sin OAuth; si
+     * murió, marca {@code ERROR} y responde {@code requiresReauth}. Ver spec/09 §"Ciclo de vida".
+     */
+    @PostMapping("/accounts/{id}/reconnect")
+    public ReconnectResponse reconnect(@PathVariable Long id) {
+        return service.reconnect(id);
+    }
+
+    /** [ADMIN] — da de baja la cuenta: revoca + borra credencial + {@code REMOVED} (conserva historia). */
+    @DeleteMapping("/accounts/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void remove(@PathVariable Long id) {
+        service.remove(id);
     }
 
     /** [ADMIN] — fuerza el refresh del token de la cuenta. */
