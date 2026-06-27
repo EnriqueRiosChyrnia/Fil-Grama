@@ -4,9 +4,22 @@ import { useGetClientsClientIdAccounts } from '../../api/generated/endpoints';
 import type { AccountResponse } from '../../api/generated/model';
 import { Button, Card, NetworkChip, networkLabel } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/layout';
+import { useAuth } from '../../lib/auth';
+import { ApiError } from '../../lib/api';
 import { StatusPill } from './clientBits';
 import { isBroken, normStatus, NETWORKS } from './accountStatus';
-import { useConnectFlow, useDisconnectAccount } from './mutations';
+import { useConnectFlow, useDisconnectAccount, useReconnectAccount, useDeleteAccount } from './mutations';
+import { ReauthDialog, ConnectLinkModal, DeleteAccountDialog } from './lifecycleDialogs';
+
+/** Etiqueta humana de una cuenta (nombre > handle > id). */
+function acctLabel(a: AccountResponse): string {
+  return a.displayName || a.handle || `Cuenta ${a.id}`;
+}
+function humanError(e: unknown): string {
+  if (e instanceof ApiError) return e.humanMessage;
+  if (e instanceof Error) return e.message;
+  return 'Ocurrió un error. Probá de nuevo.';
+}
 
 /**
  * Pestaña "Cuentas" del workspace de cliente (diseño "Gestionar redes"). Un solo
@@ -36,6 +49,15 @@ function PlusIcon() {
   );
 }
 
+function LinkIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M10 13a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 1 0-5-5l-1.5 1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 11a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 1 0 5 5l1.5-1.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function NetworkGlyph() {
   return (
     <svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -55,8 +77,56 @@ export function CuentasPage() {
   const accountsQ = useGetClientsClientIdAccounts(id, { query: { enabled: Number.isFinite(id) } });
   const accounts: AccountResponse[] = useMemo(() => accountsQ.data?.data ?? [], [accountsQ.data]);
 
+  const { isAdmin } = useAuth();
   const { connect, pending, error: connectError } = useConnectFlow(id);
   const disconnect = useDisconnectAccount(id);
+  const reconnect = useReconnectAccount(id);
+  const del = useDeleteAccount(id);
+
+  // Feedback efímero de éxito ("Reactivada", "Dada de baja") y error de operación.
+  const [flash, setFlash] = useState<string | null>(null);
+  const [opError, setOpError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!flash) return;
+    const t = window.setTimeout(() => setFlash(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [flash]);
+
+  // Diálogos del ciclo de vida.
+  const [reauth, setReauth] = useState<AccountResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AccountResponse | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Modal del link compartible: null = cerrado; objeto = abierto con su contexto.
+  const [linkModal, setLinkModal] = useState<{ platform?: string; accountId?: number; title?: string } | null>(null);
+
+  // Reconexión inteligente: un POST decide. Si el token vive, el backend reactiva sin
+  // OAuth → toast. Si murió (`requiresReauth`) → diálogo con las dos vías.
+  const handleReconnect = (a: AccountResponse) => {
+    if (a.id == null) return;
+    setOpError(null);
+    setFlash(null);
+    reconnect.mutate(a.id, {
+      onSuccess: (res) => {
+        if (res?.requiresReauth) setReauth(a);
+        else setFlash(`Reactivamos ${acctLabel(a)}.`);
+      },
+      onError: (e) => setOpError(humanError(e)),
+    });
+  };
+
+  // Baja (solo admin): tras confirmar, DELETE + refresco; conserva la historia.
+  const handleDelete = () => {
+    if (deleteTarget?.id == null) return;
+    setDeleteError(null);
+    const label = acctLabel(deleteTarget);
+    del.mutate(deleteTarget.id, {
+      onSuccess: () => {
+        setDeleteTarget(null);
+        setFlash(`Diste de baja ${label}. Su historia se conserva.`);
+      },
+      onError: (e) => setDeleteError(humanError(e)),
+    });
+  };
 
   // Conectar/Reconectar abre la red en otra pestaña; al volver, refrescamos.
   useEffect(() => {
@@ -121,11 +191,50 @@ export function CuentasPage() {
           )}
         </div>
         {total > 0 && (
-          <Button leftIcon={<PlusIcon />} onClick={openConnect}>
-            Conectar red
-          </Button>
+          <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+            <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => setLinkModal({ title: 'Link de conexión para el cliente' })}>
+              Generar link
+            </Button>
+            <Button leftIcon={<PlusIcon />} onClick={openConnect}>
+              Conectar red
+            </Button>
+          </div>
         )}
       </div>
+
+      {/* feedback efímero de éxito (reactivar / dar de baja) */}
+      {flash && (
+        <div
+          role="status"
+          style={{
+            marginTop: 16,
+            fontSize: 13,
+            color: 'var(--fg-success-fg)',
+            background: 'var(--fg-success-bg)',
+            borderRadius: 'var(--fg-radius)',
+            padding: '10px 13px',
+          }}
+        >
+          {flash}
+        </div>
+      )}
+
+      {/* error de operación (reconectar / dar de baja) */}
+      {opError && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 16,
+            fontSize: 13,
+            color: 'var(--fg-danger-line)',
+            background: 'var(--fg-danger-bg)',
+            borderRadius: 'var(--fg-radius)',
+            padding: '10px 13px',
+          }}
+        >
+          {opError}
+        </div>
+      )}
 
       {/* error de conexión (al iniciar el OAuth) */}
       {connectError && !connectOpen && (
@@ -150,9 +259,14 @@ export function CuentasPage() {
             title="Este cliente todavía no tiene redes conectadas"
             description="Conectá Instagram, Facebook o TikTok para empezar a traer sus métricas. Te llevamos al inicio de sesión oficial de la red; nunca guardamos la contraseña."
             action={
-              <Button leftIcon={<PlusIcon />} onClick={openConnect}>
-                Conectar red
-              </Button>
+              <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap', justifyContent: 'center' }}>
+                <Button leftIcon={<PlusIcon />} onClick={openConnect}>
+                  Conectar red
+                </Button>
+                <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => setLinkModal({ title: 'Link de conexión para el cliente' })}>
+                  Generar link
+                </Button>
+              </div>
             }
           />
         ) : (
@@ -171,10 +285,16 @@ export function CuentasPage() {
                       key={a.id}
                       account={a}
                       first={i === 0}
-                      connecting={pending === (a.platform ?? '').toUpperCase()}
+                      isAdmin={isAdmin}
+                      reconnecting={reconnect.isPending && reconnect.variables === a.id}
                       disconnecting={disconnect.isPending && disconnect.variables === a.id}
-                      onReconnect={() => connect((a.platform ?? '').toUpperCase(), a.id)}
+                      deleting={del.isPending && del.variables === a.id}
+                      onReconnect={() => handleReconnect(a)}
                       onDisconnect={() => a.id != null && disconnect.mutate(a.id)}
+                      onDelete={() => {
+                        setDeleteError(null);
+                        setDeleteTarget(a);
+                      }}
                     />
                   ))}
                 </Card>
@@ -212,6 +332,56 @@ export function CuentasPage() {
           .
         </div>
       )}
+
+      {/* token muerto: elegir re-autorizar la agencia o mandar link al cliente */}
+      {reauth && (
+        <ReauthDialog
+          platform={(reauth.platform ?? '').toUpperCase()}
+          accountLabel={acctLabel(reauth)}
+          reconnecting={pending === (reauth.platform ?? '').toUpperCase()}
+          onReconnectSelf={() => {
+            const a = reauth;
+            setReauth(null);
+            connect((a.platform ?? '').toUpperCase(), a.id);
+          }}
+          onSendLink={() => {
+            const a = reauth;
+            setReauth(null);
+            setLinkModal({
+              platform: (a.platform ?? '').toUpperCase() || undefined,
+              accountId: a.id,
+              title: 'Reconectar con un link',
+            });
+          }}
+          onClose={() => setReauth(null)}
+        />
+      )}
+
+      {/* baja de cuenta (solo admin): confirmación destructiva */}
+      {deleteTarget && (
+        <DeleteAccountDialog
+          accountLabel={acctLabel(deleteTarget)}
+          deleting={del.isPending}
+          error={deleteError}
+          onConfirm={handleDelete}
+          onClose={() => {
+            if (del.isPending) return;
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }}
+        />
+      )}
+
+      {/* link compartible: generar + copiar */}
+      {linkModal && (
+        <ConnectLinkModal
+          clientId={id}
+          platform={linkModal.platform}
+          accountId={linkModal.accountId}
+          title={linkModal.title}
+          onClose={() => setLinkModal(null)}
+        />
+      )}
     </div>
   );
 }
@@ -220,17 +390,23 @@ export function CuentasPage() {
 function AccountRow({
   account,
   first,
-  connecting,
+  isAdmin,
+  reconnecting,
   disconnecting,
+  deleting,
   onReconnect,
   onDisconnect,
+  onDelete,
 }: {
   account: AccountResponse;
   first: boolean;
-  connecting: boolean;
+  isAdmin: boolean;
+  reconnecting: boolean;
   disconnecting: boolean;
+  deleting: boolean;
   onReconnect: () => void;
   onDisconnect: () => void;
+  onDelete: () => void;
 }) {
   const status = normStatus(account.status);
   const broken = isBroken(account.status);
@@ -272,15 +448,21 @@ function AccountRow({
           {reason && <span style={{ fontSize: 12, color: 'var(--fg-text-tertiary)' }}>{reason}</span>}
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none', flexWrap: 'wrap' }}>
         {broken && (
-          <Button size="sm" loading={connecting} onClick={onReconnect}>
+          <Button size="sm" loading={reconnecting} onClick={onReconnect}>
             Reconectar
           </Button>
         )}
         {status !== 'DISCONNECTED' && (
           <Button variant="secondary" size="sm" loading={disconnecting} onClick={onDisconnect}>
             Desconectar
+          </Button>
+        )}
+        {/* Dar de baja: solo admin (oculto a empleados, no deshabilitado). */}
+        {isAdmin && (
+          <Button variant="ghost" size="sm" loading={deleting} onClick={onDelete} style={{ color: 'var(--fg-danger-line)' }}>
+            Eliminar
           </Button>
         )}
       </div>

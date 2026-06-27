@@ -19,12 +19,38 @@ import {
   getGetClientsClientIdAccountsQueryKey,
 } from '../../api/generated/endpoints';
 import type { CreateClientRequest, ClientResponse, ConnectResponse } from '../../api/generated/model';
-import { ApiError, orvalFetch } from '../../lib/api';
+import { ApiError, orvalFetch, coreRequest, API_BASE_URL } from '../../lib/api';
 
 function humanError(e: unknown): string {
   if (e instanceof ApiError) return e.humanMessage;
   if (e instanceof Error) return e.message;
   return 'Ocurrió un error inesperado. Probá de nuevo.';
+}
+
+/**
+ * Endpoints del CICLO DE VIDA de cuenta + LINK COMPARTIBLE (track CV3, spec/09 §
+ * "Ciclo de vida" y "Link compartible"; contratos en spec/03). El backend CV1/CV2
+ * todavía no está mergeado, así que `reconnect`, `DELETE /accounts/{id}` y
+ * `connect-links` NO existen aún en `api/generated`: los tipamos a mano contra los
+ * contratos y los llamamos vía `coreRequest` (Bearer + refresh + ApiError, igual que
+ * el mutator de orval). Cuando se mergee el backend → `npm run codegen` y migrar a los
+ * hooks generados (`usePostAccountsIdReconnect`, etc.).
+ */
+
+/** `POST /accounts/{id}/reconnect` → reconexión inteligente. */
+export interface ReconnectResult {
+  /** Estado resultante: `CONNECTED` cuando el refresh reactivó sin OAuth. */
+  status?: string;
+  /** `true` si el token murió y hace falta re-autorización (OAuth nuevo o link). */
+  requiresReauth?: boolean;
+  authorizationUrl?: string;
+}
+
+/** `POST /clients/{clientId}/connect-links` → link compartible recién creado (token raw solo acá). */
+export interface CreatedConnectLink {
+  token: string;
+  url: string;
+  expiresAt?: string;
 }
 
 /** Alta de cliente (paso 1 del wizard). Devuelve el cliente creado (con id). */
@@ -101,4 +127,59 @@ export function useConnectFlow(clientId: number) {
   );
 
   return { connect, pending, error };
+}
+
+/**
+ * Reconexión inteligente (spec/09): un solo POST decide. Si el token sigue vivo el
+ * backend reactiva (`status: CONNECTED`) sin OAuth ni molestar al cliente; si murió
+ * responde `requiresReauth` y la UI ofrece re-autorizar la agencia o mandar un link.
+ * Refresca cuentas + detalle del cliente al volver.
+ */
+export function useReconnectAccount(clientId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (accountId: number): Promise<ReconnectResult> => {
+      return coreRequest<ReconnectResult>(`${API_BASE_URL}/accounts/${accountId}/reconnect`, { method: 'POST' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getGetClientsClientIdAccountsQueryKey(clientId) });
+      qc.invalidateQueries({ queryKey: getGetClientsIdQueryKey(clientId) });
+    },
+  });
+}
+
+/**
+ * Dar de baja una cuenta (`DELETE /accounts/{id}`, **solo ADMIN**). Operación
+ * destructiva: revoca el token + borra la credencial, status `REMOVED`, conserva la
+ * historia. La UI ya exige confirmación y oculta el botón a empleados; un empleado que
+ * igual invoque el endpoint recibe `403`. Refresca cuentas + detalle.
+ */
+export function useDeleteAccount(clientId: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (accountId: number): Promise<void> => {
+      await coreRequest<void>(`${API_BASE_URL}/accounts/${accountId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: getGetClientsClientIdAccountsQueryKey(clientId) });
+      qc.invalidateQueries({ queryKey: getGetClientsIdQueryKey(clientId) });
+    },
+  });
+}
+
+/**
+ * Generar un link compartible de conexión para el cliente (spec/09 "Link
+ * compartible"). `platform`/`accountId` son opcionales: fijan la red y/o marcan que es
+ * una reconexión de una cuenta puntual. Devuelve el `token` raw + `url` pública (solo
+ * acá, una vez) y `expiresAt` (default 72 h). No invalida queries: el link es efímero.
+ */
+export function useCreateConnectLink(clientId: number) {
+  return useMutation({
+    mutationFn: async (body: { platform?: string; accountId?: number }): Promise<CreatedConnectLink> => {
+      return coreRequest<CreatedConnectLink>(`${API_BASE_URL}/clients/${clientId}/connect-links`, {
+        method: 'POST',
+        body: JSON.stringify(body ?? {}),
+      });
+    },
+  });
 }
