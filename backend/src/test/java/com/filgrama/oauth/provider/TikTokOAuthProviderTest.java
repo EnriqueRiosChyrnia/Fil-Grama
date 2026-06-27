@@ -99,6 +99,58 @@ class TikTokOAuthProviderTest {
                 .isInstanceOf(TokenRevokedException.class);
     }
 
+    // ---- CV1: disable_auto_auth (anti auto-grant de la sesión activa) ----
+
+    @Test
+    void authorizationUrlOmitsDisableAutoAuthByDefault() {
+        TikTokOAuthProvider p = provider(props());
+        String url = p.buildAuthorizationUrl(Platform.TIKTOK, "st-1", false);
+        assertThat(url).doesNotContain("disable_auto_auth");
+    }
+
+    @Test
+    void authorizationUrlAddsDisableAutoAuthWhenForceConsent() {
+        TikTokOAuthProvider p = provider(props());
+        String url = p.buildAuthorizationUrl(Platform.TIKTOK, "st-1", true);
+        assertThat(url).contains("disable_auto_auth=1");
+    }
+
+    @Test
+    void authorizationUrlAddsDisableAutoAuthWhenConfigFlagOn() {
+        OAuthProperties props = props();
+        props.getTiktok().setDisableAutoAuth(true);
+        TikTokOAuthProvider p = provider(props);
+        // 2-arg (forceConsent=false) pero el flag de config lo fuerza igual.
+        String url = p.buildAuthorizationUrl(Platform.TIKTOK, "st-1");
+        assertThat(url).contains("disable_auto_auth=1");
+    }
+
+    // ---- CV1: revokeToken best-effort (baja de cuenta) ----
+
+    @Test
+    void revokeTokenHitsRevokeEndpoint() {
+        TikTokOAuthProvider p = provider(props());
+        server.expect(requestTo(containsString("/v2/oauth/revoke/")))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{}", MediaType.APPLICATION_JSON));
+
+        p.revokeToken(Platform.TIKTOK, "a-tok", "r-tok");
+
+        server.verify();
+    }
+
+    @Test
+    void revokeTokenDoesNotThrowOnError() {
+        TikTokOAuthProvider p = provider(props());
+        // 4xx: best-effort → no debe propagar (la baja borra la credencial igual).
+        server.expect(requestTo(containsString("/v2/oauth/revoke/")))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        p.revokeToken(Platform.TIKTOK, "a-tok", "r-tok"); // no lanza
+
+        server.verify();
+    }
+
     // ---- TAREA A: nombre real (display_name + @username) vía /v2/user/info/ ----
 
     @Test

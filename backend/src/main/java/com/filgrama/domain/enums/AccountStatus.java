@@ -4,5 +4,6 @@ public enum AccountStatus {
     CONNECTED,
     DISCONNECTED,
     ERROR,
-    UNSUPPORTED
+    UNSUPPORTED,
+    REMOVED
 }
