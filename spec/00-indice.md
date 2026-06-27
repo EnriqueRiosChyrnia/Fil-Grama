@@ -51,6 +51,16 @@
 - **Plan del cliente:** etiqueta de texto libre, estética; contratos por fuera de la app.
 - **Mejores horas/días para publicar (v2):** se derivan de `published_at` + `clients.timezone`;
   `published_at` se captura desde v1.
+- **Onboarding self-service (jun-2026):** la agencia genera un **link compartible** y el cliente conecta
+  su red desde su propio navegador (sin login, sin que la agencia cierre sesión en la red). Complemento
+  dev: `disable_auto_auth=1` en TikTok. Premisa descartada: no se puede forzar la cuenta desde el
+  backend (OAuth autoriza la sesión activa). Detalle en [[09-flujo-oauth]] · contrato [[03-contratos-api]]
+  · datos [[02-modelo-de-datos]] (`connect_links`) · criterios [[04-criterios-aceptacion]] (CU9).
+- **Ciclo de vida de cuenta (jun-2026):** estados `CONNECTED`/`DISCONNECTED` (pausa, token vivo)/`ERROR`
+  (token muerto)/`UNSUPPORTED`/`REMOVED` (baja). **Reconectar inteligente** (refresh→reactivar; si el
+  token murió → re-auth por agencia o por link). **Eliminar** (`DELETE`) revoca + borra credencial y
+  conserva historia. Detalle y matriz de escenarios en [[09-flujo-oauth]]; criterios CU10
+  [[04-criterios-aceptacion]].
 
 ## Pantallas (mockups aprobados)
 

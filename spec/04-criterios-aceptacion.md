@@ -20,6 +20,10 @@
   **no** se crea ninguna cuenta ni credencial.
 - En **ningún** momento se solicita ni almacena la contraseña del cliente.
 - El token **nunca** se devuelve al front en ninguna respuesta de API.
+- **Dado** una **reconexión** de TikTok, **cuando** se arma la `authorizationUrl`, **entonces** incluye
+  `disable_auto_auth=1` para que TikTok muestre siempre la pantalla de autorización (evita el auto-grant
+  silencioso de la sesión activa, causa del `409`). Configurable (`oauth.tiktok.disable-auto-auth`) para
+  forzarlo en cualquier connect en **dev**. [[09-flujo-oauth]]
 
 ## CU2 — Job diario de captura
 
@@ -123,6 +127,50 @@ Dos tipos de reporte (`report_type`), ambos exportables a `MARKDOWN` / `PDF`, s�
   el sistema muestra lo que **alcanzó a capturar** (incluida la miniatura cacheada).
 - **Dado** que el media original expiró, **cuando** se previsualiza una story histórica, **entonces**
   se sirve desde la miniatura cacheada, no desde la red.
+
+## CU9 — Link compartible de conexión (self-service del cliente)
+
+- **Dado** un usuario autenticado (admin/empleado) y un cliente, **cuando** crea un connect-link
+  (`POST /clients/{id}/connect-links`, opc `platform`/`accountId`), **entonces** recibe
+  `{token, url, expiresAt}` con TTL por defecto (72 h); el `token` es de alta entropía, se guarda
+  **hasheado** (`token_hash`) y el raw se devuelve **solo en esa respuesta**.
+- **Dado** un link vigente, **cuando** un tercero **sin login** abre `GET /public/connect-links/{token}`,
+  **entonces** ve el nombre del cliente y la(s) red(es) habilitada(s); el endpoint **no** filtra datos de
+  otros clientes.
+- **Dado** el flujo público, **cuando** el cliente autoriza **desde su propia sesión**, **entonces** se
+  crea/actualiza la cuenta ligada al `client_id` del link, con `connected_by = created_by`, y se redirige
+  a una **página pública de éxito**.
+- **Dado** un link **expirado o revocado**, **entonces** los endpoints públicos responden `410` (o `404`
+  si el token no existe) y **no** inician OAuth.
+- **Dado** un link de **reconexión** (`accountId`), **cuando** el cliente autoriza **otra** cuenta,
+  **entonces** el callback responde `409` (mismo guard) **sin** linkear ni duplicar.
+- **Dado** un link vigente, **cuando** se usa, **entonces** es **multi-uso** hasta `expires_at`/revocación
+  (puede conectar varias redes); cada uso exitoso actualiza `used_at`.
+- **Seguridad:** el token nunca aparece en logs ni en respuestas (salvo el raw en la creación); los
+  endpoints públicos están **rate-limited** y acotados al `client_id` del token.
+
+## CU10 — Ciclo de vida de la cuenta (pausar / reconectar / dar de baja)
+
+- **Dado** una cuenta `CONNECTED`, **cuando** se la **desconecta** (`POST /accounts/{id}/disconnect`),
+  **entonces** queda `DISCONNECTED`, **se conserva** la credencial y el job **deja de** sincronizarla.
+- **Dado** una cuenta `DISCONNECTED` con token vivo, **cuando** se **reconecta**
+  (`POST /accounts/{id}/reconnect`), **entonces** el backend hace `refresh`, la reactiva a `CONNECTED`
+  **sin** OAuth ni intervención del cliente.
+- **Dado** una cuenta cuyo token **murió** (revocado/expirado), **cuando** se reconecta, **entonces** el
+  backend la marca `ERROR` y responde `requiresReauth`, ofreciendo re-autorización por la agencia
+  (connect `?accountId=`) **o** por el cliente (connect-link). **No** reactiva con un token muerto.
+- **Dado** una cuenta `REMOVED`, **cuando** se la vuelve a conectar, **entonces** se **reusa la misma
+  fila** (`UNIQUE(platform, external_account_id)`) con credencial nueva, conservando la historia previa.
+- **Dado** un **admin**, **cuando** **da de baja** una cuenta (`DELETE /accounts/{id}`), **entonces** se
+  **revoca** el token en la red (best-effort), se **borra** la credencial, queda `REMOVED` y **se
+  conservan** sus snapshots/posts (los reportes de períodos pasados siguen funcionando). Si la
+  revocación remota falla, igual se borra la credencial local (la baja no se bloquea).
+- **Dado** un **empleado**, **cuando** intenta dar de baja una cuenta, **entonces** recibe `403`
+  (dar de baja es **solo admin**); el front le oculta el botón.
+- **Dado** una cuenta `REMOVED`, **entonces** el job **no** la sincroniza y la UI de cuentas conectadas
+  **no** la lista.
+- **Dado** un `connect_links` pendiente atado a una cuenta, **cuando** esa cuenta se da de baja,
+  **entonces** el link queda **invalidado**.
 
 ## Transversales
 

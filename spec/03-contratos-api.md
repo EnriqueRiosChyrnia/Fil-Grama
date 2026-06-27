@@ -2,6 +2,7 @@
 
 > Estado: **CERRADA**.
 > Depende de: [02-modelo-de-datos.md](02-modelo-de-datos.md).
+> Adición jun-2026: endpoints de **link compartible de conexión**. Ver [[09-flujo-oauth]].
 > Base path: `/api/v1`. Formato: JSON. Auth: `Authorization: Bearer <token>`.
 > Errores: RFC 7807 `application/problem+json`. Timestamps ISO-8601 UTC.
 > **Auth: JWT** (access + refresh) — stateless, habilita clientes programáticos futuros (CLI, móvil).
@@ -75,7 +76,9 @@
 | GET | `/accounts/{id}` | detalle (sin exponer tokens) |
 | POST | `/clients/{clientId}/accounts/connect/{platform}` `?accountId=` (opc) | inicia OAuth → `{authorizationUrl, state}`. `accountId` opc = **reconexión** de una cuenta conocida |
 | GET | `/oauth/callback/{platform}?code=&state=` | callback: canjea code, crea cuenta + credencial, redirige al front; **`409`** si la reconexión autorizó otra cuenta |
-| POST | `/accounts/{id}/disconnect` | status `DISCONNECTED` → `204` |
+| POST | `/accounts/{id}/disconnect` | **pausar**: status `DISCONNECTED`, **conserva** la credencial → `204` |
+| POST | `/accounts/{id}/reconnect` | **reconectar inteligente**: intenta refresh→`CONNECTED`; si el token está muerto responde `{requiresReauth:true, authorizationUrl?}` |
+| DELETE | `/accounts/{id}` `[ADMIN]` | **dar de baja** (solo admin): revoca el token (best-effort) + borra la credencial, status `REMOVED`, conserva historia → `204` |
 | POST | `/accounts/{id}/refresh-token` `[ADMIN]` | fuerza refresh del token |
 
 `platform` ∈ `instagram` \| `facebook` \| `tiktok`. El front nunca recibe tokens; el `state`
@@ -95,11 +98,48 @@ pasa `?accountId=` al connect; el backend embebe el `external_account_id` espera
 con la última cuenta y devuelve su `open_id`), el `open_id` no coincide con el esperado → **`409`** con un
 mensaje claro ("Autorizaste con otra cuenta; cerrá sesión en la red e intentá de nuevo"), **sin linkear ni
 duplicar**. En un connect **nuevo** (sin `accountId`) no hay cuenta esperada: no se puede validar y se acepta
-lo que la red devuelva. Ver [[09-flujo-oauth]].
+lo que la red devuelva. Además, en **TikTok** la `authorizationUrl` de reconexión incluye
+`disable_auto_auth=1` para forzar la pantalla de la red (evita el auto-grant silencioso de la sesión
+activa, causa del `409`). Ver [[09-flujo-oauth]].
 
 **Escaneo al conectar.** Tras un callback exitoso, el backend dispara un **sync inmediato SOLO de esa
 cuenta** (posts + métricas + miniaturas), best-effort y asíncrono: si falla, la cuenta queda conectada
 igual. El front ve datos al instante sin esperar al job diario. Ver [[10-job-diario]].
+
+**Ciclo de vida: pausar vs reconectar vs dar de baja.** Tres operaciones distintas (detalle y matriz de
+escenarios en [[09-flujo-oauth]]):
+- `disconnect` = **pausar**: frena el sync pero **conserva** el token.
+- `reconnect` = **reconectar inteligente**: si la credencial sigue viva, hace `refresh` y reactiva a
+  `CONNECTED` **sin OAuth ni intervención del cliente**; si el token murió, responde
+  `{requiresReauth:true}` y el front ofrece **re-autorizar la agencia** (connect `?accountId=`) **o
+  enviar un connect-link al cliente**.
+- `DELETE` = **dar de baja** (`REMOVED`), **solo `[ADMIN]`**: revoca el token en la red (best-effort) y
+  borra la credencial, pero **conserva la fila y la historia** (reportes pasados siguen funcionando).
+  Re-agregarla luego es un connect nuevo que reusa la fila. Operación destructiva → el front debe pedir
+  confirmación y ocultar el botón a empleados (un empleado que invoque el endpoint recibe `403`).
+
+### Link compartible de conexión (self-service del cliente)
+
+Permite que el **dueño de la cuenta** conecte su red desde **su** navegador, sin login en Fil-Grama y
+sin que la agencia tenga que cerrar sesión en la red. La agencia genera un link temporal; el cliente lo
+abre y autoriza desde su propia sesión. Resuelve "no puedo reconectar @X porque mi navegador está
+logueado con @Y". Ver [[09-flujo-oauth]] y la tabla `connect_links` en [[02-modelo-de-datos]].
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/clients/{clientId}/connect-links` | crea un link temporal `{platform?, accountId?}` → `201` `{token, url, expiresAt}` (el `token` raw se devuelve **solo aquí**) |
+| GET | `/clients/{clientId}/connect-links` | lista los links **vigentes** del cliente (sin el token raw) |
+| DELETE | `/connect-links/{id}` | revoca el link → `204` |
+| GET | `/public/connect-links/{token}` | **público**: metadatos para la página de conexión `{clientName, platform?, expiresAt}`; `410` si venció/revocado, `404` si no existe |
+| POST | `/public/connect-links/{token}/connect/{platform}` | **público**: valida el token y arranca el OAuth acotado a ese cliente → `{authorizationUrl}` |
+
+- Los endpoints `/public/**` son `permitAll` (sin Bearer) pero **acotados al `client_id` del token**,
+  **rate-limited**, y nunca exponen datos de otros clientes ni el token en logs.
+- El **callback es el mismo** (`GET /oauth/callback/{platform}`): el `state` ya lleva todo. En el flujo
+  por link el `state` marca `origin=link` para redirigir a una **página pública de éxito/error** (el
+  cliente no tiene sesión en la app).
+- `accountId` en la creación = link de **reconexión** de esa cuenta (hereda el guard `409`).
+- `platform` en la creación fija la red; si se omite, el cliente elige entre las redes habilitadas.
 
 ---
 
