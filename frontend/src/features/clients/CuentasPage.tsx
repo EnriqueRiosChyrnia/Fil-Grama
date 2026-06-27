@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useGetClientsClientIdAccounts } from '../../api/generated/endpoints';
+import { useGetClientsClientIdAccounts, useGetClientsId } from '../../api/generated/endpoints';
 import type { AccountResponse } from '../../api/generated/model';
 import { Button, Card, NetworkChip, networkLabel } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState } from '../../components/layout';
@@ -8,7 +8,7 @@ import { useAuth } from '../../lib/auth';
 import { ApiError } from '../../lib/api';
 import { StatusPill } from './clientBits';
 import { isBroken, normStatus, NETWORKS } from './accountStatus';
-import { useConnectFlow, useDisconnectAccount, useReconnectAccount, useDeleteAccount } from './mutations';
+import { useConnectFlow, useDisconnectAccount, useReconnectAccount, useDeleteAccount, useCreateConnectLink } from './mutations';
 import { ReauthDialog, ConnectLinkModal, DeleteAccountDialog } from './lifecycleDialogs';
 
 /** Etiqueta humana de una cuenta (nombre > handle > id). */
@@ -76,12 +76,16 @@ export function CuentasPage() {
 
   const accountsQ = useGetClientsClientIdAccounts(id, { query: { enabled: Number.isFinite(id) } });
   const accounts: AccountResponse[] = useMemo(() => accountsQ.data?.data ?? [], [accountsQ.data]);
+  // Nombre del cliente para el header de la tarjeta del QR (cacheado: el layout ya lo trae).
+  const clientQ = useGetClientsId(id, { query: { enabled: Number.isFinite(id) } });
+  const clientName = clientQ.data?.data?.name;
 
   const { isAdmin } = useAuth();
   const { connect, pending, error: connectError } = useConnectFlow(id);
   const disconnect = useDisconnectAccount(id);
   const reconnect = useReconnectAccount(id);
   const del = useDeleteAccount(id);
+  const createLink = useCreateConnectLink(id);
 
   // Feedback efímero de éxito ("Reactivada", "Dada de baja") y error de operación.
   const [flash, setFlash] = useState<string | null>(null);
@@ -98,6 +102,14 @@ export function CuentasPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // Modal del link compartible: null = cerrado; objeto = abierto con su contexto.
   const [linkModal, setLinkModal] = useState<{ platform?: string; accountId?: number; title?: string } | null>(null);
+  // Abrir el modal = disparar la mutation acá, en el handler del click (evento, NO un
+  // useEffect): así el observer de React Query vive en esta página estable y el resultado
+  // no se pierde con el doble-montaje de StrictMode. El modal solo muestra el estado.
+  const openLinkModal = (opts: { platform?: string; accountId?: number; title?: string }) => {
+    createLink.reset();
+    createLink.mutate({ platform: opts.platform, accountId: opts.accountId });
+    setLinkModal(opts);
+  };
 
   // Reconexión inteligente: un POST decide. Si el token vive, el backend reactiva sin
   // OAuth → toast. Si murió (`requiresReauth`) → diálogo con las dos vías.
@@ -192,7 +204,7 @@ export function CuentasPage() {
         </div>
         {total > 0 && (
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => setLinkModal({ title: 'Link de conexión para el cliente' })}>
+            <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => openLinkModal({ title: 'Link de conexión para el cliente' })}>
               Generar link
             </Button>
             <Button leftIcon={<PlusIcon />} onClick={openConnect}>
@@ -263,7 +275,7 @@ export function CuentasPage() {
                 <Button leftIcon={<PlusIcon />} onClick={openConnect}>
                   Conectar red
                 </Button>
-                <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => setLinkModal({ title: 'Link de conexión para el cliente' })}>
+                <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => openLinkModal({ title: 'Link de conexión para el cliente' })}>
                   Generar link
                 </Button>
               </div>
@@ -347,7 +359,7 @@ export function CuentasPage() {
           onSendLink={() => {
             const a = reauth;
             setReauth(null);
-            setLinkModal({
+            openLinkModal({
               platform: (a.platform ?? '').toUpperCase() || undefined,
               accountId: a.id,
               title: 'Reconectar con un link',
@@ -375,9 +387,10 @@ export function CuentasPage() {
       {/* link compartible: generar + copiar */}
       {linkModal && (
         <ConnectLinkModal
-          clientId={id}
+          create={createLink}
           platform={linkModal.platform}
           accountId={linkModal.accountId}
+          clientName={clientName}
           title={linkModal.title}
           onClose={() => setLinkModal(null)}
         />
@@ -454,7 +467,8 @@ function AccountRow({
             Reconectar
           </Button>
         )}
-        {status !== 'DISCONNECTED' && (
+        {/* Desconectar (pausar) solo tiene sentido en una cuenta activa; no en ERROR/DISCONNECTED. */}
+        {status === 'CONNECTED' && (
           <Button variant="secondary" size="sm" loading={disconnecting} onClick={onDisconnect}>
             Desconectar
           </Button>

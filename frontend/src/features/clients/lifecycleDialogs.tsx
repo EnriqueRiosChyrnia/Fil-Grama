@@ -1,8 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, NetworkChip, networkLabel } from '../../components/ui';
 import { ApiError } from '../../lib/api';
 import { Dialog } from './Dialog';
 import { useCreateConnectLink } from './mutations';
+import { BrandedQr } from './BrandedQr';
+import { buildQrCard } from './qrCard';
+
+/** Estado de la mutation del link compartible, dueño en la página (ver ConnectLinkModal). */
+type CreateLink = ReturnType<typeof useCreateConnectLink>;
 
 /**
  * Diálogos del ciclo de vida de cuenta (track CV3, spec/09):
@@ -151,39 +156,75 @@ function CopyIcon() {
   );
 }
 
+function DownloadIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 4v10m0 0 4-4m-4 4-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 18h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="9" cy="10" r="1.6" fill="currentColor" />
+      <path d="m5 17 4.5-4 3 2.5L16 12l3 3.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Recuerda el override "azul Fil-Grama" entre aperturas (único uso de localStorage). */
+const QR_BRAND_KEY = 'fg.qr.use-brand';
+function readBrandOverride(): boolean {
+  try {
+    return localStorage.getItem(QR_BRAND_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Genera y muestra el link compartible. Al abrir, dispara la creación (el usuario ya
  * pidió "generar"); muestra el progreso, y al volver la `url` ofrece copiarla + el
  * aviso de vencimiento. `platform`/`accountId` opcionales fijan red / reconexión.
  */
 export function ConnectLinkModal({
-  clientId,
+  create,
   platform,
   accountId,
+  clientName,
   title = 'Link de conexión para el cliente',
   onClose,
 }: {
-  clientId: number;
+  /** Mutation dueña en la página: se dispara al abrir el modal (en el onClick), no acá.
+   *  Disparar en un useEffect + ref se cuelga bajo StrictMode (el observer del re-montaje
+   *  queda idle y el ref bloquea el re-disparo). El modal es solo presentacional. */
+  create: CreateLink;
   platform?: string;
   accountId?: number;
+  /** Nombre del cliente para el header de la tarjeta compartible. */
+  clientName?: string;
   title?: string;
   onClose: () => void;
 }) {
-  const create = useCreateConnectLink(clientId);
-  const { mutate } = create;
   const [copied, setCopied] = useState(false);
-  const created = useRef(false);
-
-  // Crear el link una sola vez al abrir. El ref persiste entre el setup/cleanup/setup
-  // que StrictMode hace en dev, así no generamos dos links.
+  const [imgCopied, setImgCopied] = useState(false);
+  const [busy, setBusy] = useState<'download' | 'image' | null>(null);
+  const [cardError, setCardError] = useState<string | null>(null);
+  // Override "azul Fil-Grama": solo aplica cuando hay red; sin red el QR ya es neutro.
+  const [brandOverride, setBrandOverride] = useState(readBrandOverride);
   useEffect(() => {
-    if (created.current) return;
-    created.current = true;
-    mutate({ platform, accountId });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    try {
+      localStorage.setItem(QR_BRAND_KEY, brandOverride ? '1' : '0');
+    } catch {
+      /* sin persistencia: no es crítico */
+    }
+  }, [brandOverride]);
 
   const url = create.data?.url ?? '';
+  const forceBrand = !platform || brandOverride;
 
   const copy = async () => {
     try {
@@ -192,6 +233,50 @@ export function ConnectLinkModal({
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
       setCopied(false);
+    }
+  };
+
+  const cardFileName = () => {
+    const net = (platform ?? '').toUpperCase();
+    const tag = !brandOverride && net ? net.toLowerCase() : 'fil-grama';
+    return `conexion-${tag}.png`;
+  };
+
+  const downloadCard = async () => {
+    setBusy('download');
+    setCardError(null);
+    try {
+      const blob = await buildQrCard({ url, platform, forceBrand, clientName });
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = cardFileName();
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(href), 1000);
+    } catch {
+      setCardError('No pudimos generar la imagen. Probá de nuevo.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyImage = async () => {
+    setBusy('image');
+    setCardError(null);
+    try {
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        throw new Error('clipboard sin soporte de imagen');
+      }
+      const blob = await buildQrCard({ url, platform, forceBrand, clientName });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      setImgCopied(true);
+      window.setTimeout(() => setImgCopied(false), 2000);
+    } catch {
+      setCardError('Tu navegador no dejó copiar la imagen. Usá “Descargar” y adjuntala.');
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -229,13 +314,77 @@ export function ConnectLinkModal({
             {create.error instanceof ApiError ? create.error.humanMessage : 'No pudimos generar el enlace. Probá de nuevo.'}
           </div>
           <div style={{ marginTop: 12 }}>
-            <Button size="sm" onClick={() => mutate({ platform, accountId })}>
+            <Button size="sm" onClick={() => create.mutate({ platform, accountId })}>
               Reintentar
             </Button>
           </div>
         </div>
       ) : (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* QR de marca centrado (estilo por red o azul Fil-Grama según override). */}
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div
+              style={{
+                padding: 14,
+                background: '#FFFFFF',
+                border: '1px solid var(--fg-border)',
+                borderRadius: 14,
+                boxShadow: '0 2px 10px rgba(15,63,120,.06)',
+              }}
+            >
+              <BrandedQr url={url} platform={platform} forceBrand={forceBrand} size={216} />
+            </div>
+          </div>
+
+          {/* Override a azul de marca: solo tiene sentido cuando hay una red fija. */}
+          {platform && (
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 12.5,
+                color: 'var(--fg-text-secondary)',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={brandOverride}
+                onChange={(e) => setBrandOverride(e.target.checked)}
+                style={{ accentColor: 'var(--fg-primary)', width: 15, height: 15 }}
+              />
+              Usar azul Fil-Grama (en vez del estilo {networkLabel(platform.toUpperCase(), true)})
+            </label>
+          )}
+
+          {/* Acciones de imagen: tarjeta lista para WhatsApp. */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Button
+              size="md"
+              leftIcon={<DownloadIcon />}
+              onClick={downloadCard}
+              loading={busy === 'download'}
+              disabled={busy != null}
+              style={{ flex: 1 }}
+            >
+              Descargar
+            </Button>
+            <Button
+              size="md"
+              variant="secondary"
+              leftIcon={<ImageIcon />}
+              onClick={copyImage}
+              loading={busy === 'image'}
+              disabled={busy != null}
+              style={{ flex: 1 }}
+            >
+              {imgCopied ? 'Copiado ✓' : 'Copiar imagen'}
+            </Button>
+          </div>
+
+          {/* Link en texto + copiar (fallback si la cámara no engancha). */}
           <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
             <div
               style={{
@@ -257,16 +406,32 @@ export function ConnectLinkModal({
             >
               {url}
             </div>
-            <Button size="md" leftIcon={<CopyIcon />} onClick={copy}>
-              {copied ? 'Copiado ✓' : 'Copiar'}
+            <Button size="md" variant="secondary" leftIcon={<CopyIcon />} onClick={copy}>
+              {copied ? 'Copiado ✓' : 'Copiar link'}
             </Button>
           </div>
+
+          {cardError && (
+            <div
+              style={{
+                fontSize: 12.5,
+                color: 'var(--fg-danger-fg)',
+                background: 'var(--fg-danger-bg)',
+                border: '1px solid var(--fg-danger-border)',
+                borderRadius: 'var(--fg-radius)',
+                padding: '9px 12px',
+                lineHeight: 1.45,
+              }}
+            >
+              {cardError}
+            </div>
+          )}
+
           <div
             style={{
               display: 'flex',
               alignItems: 'flex-start',
               gap: 8,
-              marginTop: 13,
               padding: '11px 13px',
               background: 'var(--fg-warning-bg)',
               borderRadius: 'var(--fg-radius)',

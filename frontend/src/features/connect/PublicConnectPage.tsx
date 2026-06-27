@@ -164,6 +164,27 @@ function Connect({
         ))}
       </div>
 
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 8,
+          marginTop: 16,
+          padding: '10px 13px',
+          background: 'var(--fg-blue-50)',
+          borderRadius: 'var(--fg-radius)',
+          fontSize: 12.5,
+          color: 'var(--fg-text-secondary)',
+          lineHeight: 1.5,
+        }}
+      >
+        <span aria-hidden>📱</span>
+        <span>
+          Si se abre la app de la red (por ejemplo TikTok), al terminar <strong>volvé a esta pestaña del
+          navegador</strong> para finalizar la conexión.
+        </span>
+      </div>
+
       <div style={{ textAlign: 'center', fontSize: 11.5, color: 'var(--fg-text-tertiary)', lineHeight: 1.55, marginTop: 20 }}>
         Este enlace te lo compartió tu agencia. Al autorizar, la cuenta queda vinculada para sus reportes.
       </div>
