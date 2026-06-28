@@ -69,6 +69,126 @@ function NetworkGlyph() {
   );
 }
 
+/** Glyph "todas las redes" (mini grafo) para la opción genérica del selector. */
+function AllNetsIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="6" cy="12" r="2.2" fill="var(--fg-primary)" />
+      <circle cx="17" cy="6.5" r="2.2" fill="var(--fg-primary)" />
+      <circle cx="17" cy="17.5" r="2.2" fill="var(--fg-primary)" />
+      <path d="M8 11 15 7M8 13l7 4" stroke="var(--fg-primary)" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+/** Opciones del selector de red al generar el link. `value` undefined = link genérico (azul). */
+const LINK_NET_OPTIONS: { value?: string; label: string; sub: string }[] = [
+  { value: undefined, label: 'Todas las redes', sub: 'El cliente elige · QR azul Fil-Grama' },
+  { value: 'INSTAGRAM', label: 'Instagram', sub: 'Link de Instagram · QR de la red' },
+  { value: 'FACEBOOK', label: 'Facebook', sub: 'Link de Facebook · QR de la red' },
+  { value: 'TIKTOK', label: 'TikTok', sub: 'Link de TikTok · QR de la red' },
+];
+
+/**
+ * Botón "Generar link" con selector de red (spec/09 §"Link compartible"/"QR"): la agencia elige para
+ * qué red es el link —o "todas" (genérico)— ANTES de crearlo, así no se generan tokens al pedo. El
+ * connect-link recién se crea al elegir (vía `onPick`); el modal sale con el estilo de QR correcto.
+ */
+function GenerateLinkMenu({ onPick }: { onPick: (platform?: string) => void }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const choose = (platform?: string) => {
+    setOpen(false);
+    onPick(platform);
+  };
+
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <Button
+        variant="secondary"
+        leftIcon={<LinkIcon />}
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        Generar link
+      </Button>
+      {open && (
+        <>
+          {/* Capa para cerrar al click fuera. */}
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
+          <div
+            role="menu"
+            style={{
+              position: 'absolute',
+              top: 'calc(100% + 6px)',
+              right: 0,
+              zIndex: 50,
+              width: 270,
+              background: 'var(--fg-bg-surface)',
+              border: '1px solid var(--fg-border)',
+              borderRadius: 'var(--fg-radius)',
+              boxShadow: 'var(--fg-shadow-lg)',
+              padding: 7,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11.5,
+                fontWeight: 600,
+                color: 'var(--fg-text-tertiary)',
+                textTransform: 'uppercase',
+                letterSpacing: '.04em',
+                padding: '6px 9px 8px',
+              }}
+            >
+              ¿Para qué red es el link?
+            </div>
+            {LINK_NET_OPTIONS.map((opt) => (
+              <button
+                key={opt.value ?? 'ALL'}
+                type="button"
+                role="menuitem"
+                onClick={() => choose(opt.value)}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--fg-bg-muted)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  width: '100%',
+                  textAlign: 'left',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--fg-radius-sm)',
+                  padding: '9px',
+                  cursor: 'pointer',
+                }}
+              >
+                <span style={{ width: 26, display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+                  {opt.value ? <NetworkChip platform={opt.value} /> : <AllNetsIcon />}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontSize: 13.5, fontWeight: 500, color: 'var(--fg-text-primary)' }}>{opt.label}</span>
+                  <span style={{ display: 'block', fontSize: 11.5, color: 'var(--fg-text-tertiary)' }}>{opt.sub}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function CuentasPage() {
   const { clientId } = useParams();
   const id = Number(clientId);
@@ -204,9 +324,7 @@ export function CuentasPage() {
         </div>
         {total > 0 && (
           <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-            <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => openLinkModal({ title: 'Link de conexión para el cliente' })}>
-              Generar link
-            </Button>
+            <GenerateLinkMenu onPick={(platform) => openLinkModal({ platform, title: 'Link de conexión para el cliente' })} />
             <Button leftIcon={<PlusIcon />} onClick={openConnect}>
               Conectar red
             </Button>
@@ -275,9 +393,7 @@ export function CuentasPage() {
                 <Button leftIcon={<PlusIcon />} onClick={openConnect}>
                   Conectar red
                 </Button>
-                <Button variant="secondary" leftIcon={<LinkIcon />} onClick={() => openLinkModal({ title: 'Link de conexión para el cliente' })}>
-                  Generar link
-                </Button>
+                <GenerateLinkMenu onPick={(platform) => openLinkModal({ platform, title: 'Link de conexión para el cliente' })} />
               </div>
             }
           />
