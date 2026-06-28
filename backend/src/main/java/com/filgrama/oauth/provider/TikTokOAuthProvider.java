@@ -52,6 +52,8 @@ public class TikTokOAuthProvider implements OAuthProvider {
 
     private final OAuthProperties props;
     private final RestClient http;
+    /** PKCE: verifier por {@code state}, puesto al armar la URL y consumido en el canje. */
+    private final PkceStore pkce = new PkceStore();
 
     @Autowired
     public TikTokOAuthProvider(OAuthProperties props) {
@@ -77,12 +79,17 @@ public class TikTokOAuthProvider implements OAuthProvider {
     @Override
     public String buildAuthorizationUrl(Platform platform, String state, boolean forceConsent) {
         OAuthProperties.TikTok tk = props.getTiktok();
+        // PKCE (OBLIGATORIO en TikTok; spec/09): mandamos el challenge y guardamos el verifier por state.
+        String verifier = PkceStore.newVerifier();
+        pkce.put(state, verifier);
         UriComponentsBuilder url = UriComponentsBuilder.fromUriString(tk.getAuthorizeUrl())
                 .queryParam("client_key", tk.getClientKey())
                 .queryParam("scope", String.join(",", tk.getScopes()))
                 .queryParam("response_type", "code")
                 .queryParam("redirect_uri", redirectUri(platform))
-                .queryParam("state", state);
+                .queryParam("state", state)
+                .queryParam("code_challenge", PkceStore.challenge(verifier))
+                .queryParam("code_challenge_method", "S256");
         // Anti auto-grant de la sesión activa: forzá la pantalla en reconexión (forceConsent) o cuando
         // la config lo pide para todo connect (dev). spec/09 §TikTok.
         if (forceConsent || tk.isDisableAutoAuth()) {
@@ -93,6 +100,11 @@ public class TikTokOAuthProvider implements OAuthProvider {
 
     @Override
     public OAuthExchangeResult exchangeCode(Platform platform, String code) {
+        return exchangeCode(platform, code, null);
+    }
+
+    @Override
+    public OAuthExchangeResult exchangeCode(Platform platform, String code, String state) {
         OAuthProperties.TikTok tk = props.getTiktok();
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("client_key", tk.getClientKey());
@@ -100,6 +112,11 @@ public class TikTokOAuthProvider implements OAuthProvider {
         form.add("code", code);
         form.add("grant_type", "authorization_code");
         form.add("redirect_uri", redirectUri(platform));
+        // PKCE: recuperá el verifier que guardamos al armar la URL (clave = state). spec/09 §TikTok.
+        String verifier = pkce.consume(state);
+        if (verifier != null) {
+            form.add("code_verifier", verifier);
+        }
 
         JsonNode tok = post(tk.getTokenUrl(), form, false);
         String openId = require(OAuthHttpSupport.text(tok, "open_id"), "TikTok no devolvió open_id");

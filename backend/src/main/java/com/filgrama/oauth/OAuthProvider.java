@@ -42,6 +42,15 @@ public interface OAuthProvider {
     OAuthExchangeResult exchangeCode(Platform platform, String code);
 
     /**
+     * Igual que {@link #exchangeCode(Platform, String)} pero recibiendo el {@code state} de la
+     * autorización, necesario para recuperar el {@code code_verifier} de PKCE (TikTok lo exige;
+     * spec/09 §TikTok). El default delega en la variante de 2 args para las redes sin PKCE (Meta/Mock).
+     */
+    default OAuthExchangeResult exchangeCode(Platform platform, String code, String state) {
+        return exchangeCode(platform, code);
+    }
+
+    /**
      * Refresca/re-canjea el token. Meta usa el access token de larga duración
      * (re-exchange / ig_refresh_token); TikTok usa el refresh token (y puede rotar
      * uno nuevo). El refresh token puede ser {@code null} para redes que no lo usan.

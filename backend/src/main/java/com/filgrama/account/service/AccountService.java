@@ -89,7 +89,10 @@ public class AccountService {
         if (!clientRepo.existsById(clientId)) {
             throw ApiException.notFound("Client %d not found".formatted(clientId));
         }
+        // Las cuentas dadas de baja (REMOVED) no se listan: su historia se conserva en la DB para
+        // reportes pasados, pero no aparecen en "Cuentas conectadas". spec/02 §social_accounts.
         return accountRepo.findByClientId(clientId).stream()
+                .filter(a -> a.getStatus() != AccountStatus.REMOVED)
                 .map(AccountResponse::from)
                 .toList();
     }
@@ -177,7 +180,7 @@ public class AccountService {
 
         OAuthExchangeResult result;
         try {
-            result = providers.forPlatform(platform).exchangeCode(platform, code);
+            result = providers.forPlatform(platform).exchangeCode(platform, code, state);
         } catch (TokenRevokedException e) {
             return errorRedirect("token_revoked", origin);
         } catch (OAuthException e) {
