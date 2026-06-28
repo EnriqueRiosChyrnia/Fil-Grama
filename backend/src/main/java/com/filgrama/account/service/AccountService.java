@@ -210,7 +210,7 @@ public class AccountService {
                 result.tokenType(), result.scopes(), result.expiresAt());
         // TAREA A: escaneo inmediato SOLO de esta cuenta (lo dispara el track Sync AFTER_COMMIT).
         events.publishEvent(new AccountConnectedEvent(account.getId()));
-        return successRedirect(account.getId(), origin);
+        return successRedirect(account.getId(), origin, platform);
     }
 
     // ---- disconnect ----
@@ -452,12 +452,15 @@ public class AccountService {
 
     /**
      * Redirect de éxito según el origen del flujo: {@code LINK} va a la página pública de resultado
-     * ({@code ?status=ok}, el cliente no tiene sesión en la app); {@code APP} usa el redirect del front.
+     * ({@code ?status=ok&net=<red>}, el cliente no tiene sesión en la app); el {@code net} permite a la
+     * página volver a la lista de onboarding mostrando "{red} conectada". {@code APP} usa el redirect del
+     * front. spec/09 §"Onboarding multi-cuenta".
      */
-    private String successRedirect(Long accountId, OAuthOrigin origin) {
+    private String successRedirect(Long accountId, OAuthOrigin origin, Platform platform) {
         if (origin == OAuthOrigin.LINK) {
             return UriComponentsBuilder.fromUriString(connectDoneUrl)
                     .queryParam("status", "ok")
+                    .queryParam("net", Platforms.path(platform))
                     .encode().toUriString();
         }
         return successRedirect(accountId);

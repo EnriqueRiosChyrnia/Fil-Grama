@@ -21,6 +21,7 @@ import com.filgrama.connectlink.dto.ConnectLinkSummary;
 import com.filgrama.connectlink.dto.PublicLinkInfo;
 import com.filgrama.domain.Client;
 import com.filgrama.domain.SocialAccount;
+import com.filgrama.domain.enums.AccountStatus;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.error.ApiException;
 import com.filgrama.oauth.OAuthProviderRegistry;
@@ -154,7 +155,13 @@ public class ConnectLinkService {
         Client client = clientRepo.findById(link.getClientId())
                 .orElseThrow(() -> ApiException.notFound("Cliente del link no encontrado"));
         String platform = link.getPlatform() != null ? link.getPlatform().name() : null;
-        return new PublicLinkInfo(client.getName(), platform, link.getExpiresAt());
+        // Checklist abierto del onboarding multi-cuenta: cuentas ya CONNECTED del cliente del token.
+        // Mínimo (handle + red); nunca métricas ni credenciales. spec/09 §"Onboarding multi-cuenta".
+        List<PublicLinkInfo.ConnectedAccount> connectedAccounts = accountRepo.findByClientId(link.getClientId()).stream()
+                .filter(a -> a.getStatus() == AccountStatus.CONNECTED)
+                .map(a -> new PublicLinkInfo.ConnectedAccount(a.getHandle(), a.getPlatform().name()))
+                .toList();
+        return new PublicLinkInfo(client.getName(), platform, link.getExpiresAt(), connectedAccounts);
     }
 
     /**
