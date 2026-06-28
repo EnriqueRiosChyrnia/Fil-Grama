@@ -37,6 +37,60 @@ Notas: el plan de 1 GB ($5) es muy justo para JVM + Postgres juntos → usar **2
 DB manejada de Vultr ($15+/mes aparte): Postgres self-managed en el Compose. Free tier de Cloudflare
 NO degrada velocidad (mismos PoPs que el pago).
 
+## Desarrollo: túnel cloudflared (puente a HTTPS) — y qué cambia en prod
+
+> **DEV ACTUAL** (no v1.5). Documentado porque al desplegar en Vultr **hay que cambiarlo**, y tiene
+> implicancias de seguridad.
+
+**Qué es y por qué existe.** En dev el backend corre en `localhost:8080` y el frontend (Vite) en
+`localhost:5173`, en la MacBook. TikTok exige `redirect_uri` **HTTPS** y testear el link compartible
+desde el celular necesita una URL pública. Para eso hay un **túnel cloudflared** (tunnel `filgrama`)
+que publica:
+- `api.fil-grama.com` → `http://localhost:8080` (backend)
+- `app.fil-grama.com` → `http://localhost:5173` (frontend Vite)
+
+> **Los hostnames se gestionan en el dashboard de Cloudflare** (Networks → Tunnels → `filgrama` →
+> *Published application routes*), **no** en el `~/.cloudflared/config.yml` local: el túnel es
+> remotely-managed, así que editar el archivo local **no surte efecto** (gotcha que costó un rato).
+
+> ⚠️ **SEGURIDAD — el túnel NO es "solo tu MacBook".** El connector corre en tu Mac, pero
+> `api.fil-grama.com` / `app.fil-grama.com` son **públicos en internet**: cualquiera con la URL llega a
+> tu backend/Vite de dev. Exposición real (modesta — data de dev + sandbox + mayormente con auth, pero
+> existe): `/auth/login` es brute-forceable, Swagger/OpenAPI está `permitAll`, los `/public/**` del
+> connect-link están expuestos (rate-limited), y un perfil dev podría filtrar stack traces.
+> **Mitigaciones en dev:** (a) **Cloudflare Access** delante de `app.fil-grama.com` (login por tu
+> identidad) para que solo entres vos — **OJO:** NO sobre `/api/v1/oauth/callback/**`, porque ese
+> callback lo golpea el server de TikTok, no un humano; (b) mantener TikTok en **sandbox** (solo target
+> users autorizan); (c) **apagar el túnel cuando no testeás**; (d) no exponer Swagger ni stack traces.
+
+**El túnel es DEV-ONLY.** En producción **desaparece**: el backend vive en el VPS Vultr (Fases 1-2) y el
+frontend en Cloudflare Pages (Fase 4). `api.*` pasa a ser un registro **A** a la IP del VPS (Fase 3), no
+un túnel desde tu laptop.
+
+### Matriz de config: dev (túnel) → prod (Vultr)
+
+| Qué | Dev (hoy, túnel) | Prod (Vultr) | Dónde se setea |
+|---|---|---|---|
+| Backend | `localhost:8080` vía túnel | VPS São Paulo detrás de Caddy | DNS Cloudflare + Caddy |
+| Frontend | Vite `localhost:5173` vía túnel | Cloudflare Pages | Cloudflare Pages |
+| `api.fil-grama.com` | túnel → localhost:8080 | **A** → IP del VPS (proxy Cloudflare) | DNS Cloudflare |
+| `app.fil-grama.com` | túnel → localhost:5173 | Cloudflare Pages | DNS / Pages |
+| `OAUTH_REDIRECT_BASE_URI` | `https://api.fil-grama.com` | `https://api.fil-grama.com` (mismo, ahora apunta al VPS) | env backend |
+| `app.connect-link-base-url` | `https://app.fil-grama.com/connect` | ídem | env backend |
+| `app.connect-done-url` | `https://app.fil-grama.com/connect/done` | ídem | env backend |
+| `VITE_API_BASE_URL` (front) | `https://api.fil-grama.com/api/v1` | ídem | `.env` dev / env de Pages |
+| `cors.allowed-origins` | `https://app.fil-grama.com` + localhost | **solo** `https://app.fil-grama.com` | env backend |
+| TikTok | **sandbox** (`sb…` key, target users) | **producción** (App Review, key prod, redirect prod registrado) | TikTok portal + env |
+| Secrets | `docker-compose.override.yml` / `.env` (gitignored) | env del Compose **en el VPS** (nunca en git) | VPS |
+
+> **PKCE/state en memoria.** El `code_verifier` (PKCE) y el nonce del `state` viven **en memoria del
+> proceso** que arma la URL → el callback debe volver a la **misma instancia**. Dev (un proceso) y prod
+> single-instance: OK. Si algún día hay >1 instancia → store compartido (Redis) o sticky sessions.
+> [[09-flujo-oauth]]
+
+> El dominio real es **`fil-grama.com`** (con guion); los ejemplos `filgrama.com` de la Fase 3 valen como
+> el real con guion.
+
 ## Plan de ejecución v1.5 (fases)
 
 ### Fase 1 — Provisionar el VPS

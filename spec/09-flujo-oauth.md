@@ -89,10 +89,24 @@ cliente tiene Página de FB + IG profesional vinculada (un solo consentimiento c
 ## TikTok
 
 1. `authorizationUrl` a `tiktok.com/v2/auth/authorize/` con scopes `user.info.basic`,
-   `user.info.profile`, `user.info.stats`, `video.list`, un `state` y (en reconexión)
-   `disable_auto_auth=1`.
+   `user.info.profile`, `user.info.stats`, `video.list`, un `state`, **`code_challenge` +
+   `code_challenge_method=S256` (PKCE, OBLIGATORIO)** y (en reconexión) `disable_auto_auth=1`.
 2. Callback con `code` → `POST https://open.tiktokapis.com/v2/oauth/token/`
-   (`grant_type=authorization_code`, `client_key`, `client_secret`, `code`, `redirect_uri`).
+   (`grant_type=authorization_code`, `client_key`, `client_secret`, `code`, `redirect_uri`,
+   **`code_verifier`**).
+
+> **PKCE (OBLIGATORIO en TikTok) — gap detectado jun-2026.** La app de TikTok rechaza la autorización
+> con `param_error / errCode 10007 / error_type=code_challenge` si falta PKCE. Flujo: al armar la
+> `authorizationUrl` se genera un `code_verifier` aleatorio (43–128 chars `[A-Za-z0-9-._~]`), se manda
+> `code_challenge = BASE64URL(SHA256(code_verifier))` + `code_challenge_method=S256`, y el `code_verifier`
+> se **guarda server-side asociado al `state`** (nonce). En el canje (`exchangeCode`) se envía el
+> `code_verifier`. El verifier NUNCA viaja en la `authorizationUrl` ni en el `state` (solo el challenge).
+> Implica: store en memoria `nonce→verifier` (TTL corto, patrón del `OAuthStateService`) y pasar el
+> `state`/verifier al `exchangeCode`. Aplica a TikTok; Meta no usa este PKCE.
+
+> **Config requerida.** `TIKTOK_CLIENT_KEY` y `TIKTOK_CLIENT_SECRET` deben estar seteadas en el entorno
+> del backend (en `application.yml` son `${TIKTOK_CLIENT_KEY:}` / `${TIKTOK_CLIENT_SECRET:}`, default
+> vacío). Con `client_key` vacío la `authorizationUrl` sale inválida.
 3. Respuesta: `access_token` (**24 h**), `refresh_token` (**365 d**), `open_id`, `scope`.
 4. **Refresh:** `POST /v2/oauth/token/` con `grant_type=refresh_token` → nuevo access token (y
    posible nuevo refresh token → **rotarlo** y guardarlo). Sin consentimiento del usuario.
@@ -139,8 +153,9 @@ de siempre: el `state` ya lleva `client_id` + `platform` (+ `external_account_id
    del link) y devuelve `{authorizationUrl}`. El front redirige.
 4. El cliente autoriza en la pantalla oficial **desde su propia sesión**.
 5. Callback estándar `GET /oauth/callback/{platform}` → canjea, crea/actualiza `social_accounts` +
-   `account_credentials` ligadas al `client_id` del link, y redirige a una **página pública de
-   éxito/error** (el `state` marca `origin=link` para elegir el destino; el cliente no tiene sesión en la app).
+   `account_credentials` ligadas al `client_id` del link, y **devuelve al cliente a la lista**
+   (`/connect/{token}`) para que pueda **conectar otra cuenta** — NO a un callejón sin salida (ver
+   "Onboarding multi-cuenta" abajo). El `state` marca `origin=link`; en error vuelve con `?error=`.
 
 **Reglas**
 - **Multi-uso hasta expirar/revocar** (como Metricool): un mismo link puede conectar varias redes
@@ -156,6 +171,80 @@ de siempre: el `state` ya lleva `client_id` + `platform` (+ `external_account_id
 
 Contrato en [[03-contratos-api]] · tabla `connect_links` en [[02-modelo-de-datos]] · criterios en
 [[04-criterios-aceptacion]] (CU9).
+
+### Onboarding multi-cuenta (lista abierta + "conectar otra")
+
+> **Problema.** Un cliente puede querer conectar **varias cuentas** —incluso de la misma red (2 TikTok,
+> 3 Facebook, 2 Instagram)—. Un "checklist por red" (un ✓ por red) sería falso: no sabemos cuántas
+> cuentas quiere. Y si el callback termina en un "¡Listo!" sin salida, el cliente cree que terminó tras
+> la primera y abandona el resto.
+
+**Modelo: lista abierta, no checklist con metas.** La página pública `/connect/{token}` es una **lista de
+cuentas conectadas + "conectar otra" + "terminé"**:
+- **"Cuentas conectadas hasta ahora"**: las cuentas `CONNECTED` del cliente (handle + red + ✓). El
+  `GET /public/connect-links/{token}` devuelve esa lista — **mínimo** (handle + platform; **sin** métricas
+  ni tokens; acotada al `client_id` del token).
+- **"Conectar otra cuenta"**: botones por red (las habilitadas por el link). El cliente conecta **las que
+  quiera, de cualquier red y cantidad**.
+- Tras cada conexión, el callback **vuelve a esta lista** (no a un "listo" muerto): la cuenta nueva aparece
+  y el cliente sigue o cierra con **"Terminé"**.
+
+**Multi-cuenta de la misma red.** Conectar una **segunda** cuenta de la misma red choca con OAuth (autoriza
+la sesión activa): el cliente debe **cambiar de cuenta en la pantalla de esa red** (Meta/TikTok tienen
+selector). No se automatiza → se muestra un **aviso** ("para conectar otra cuenta de la misma red, cambiá
+de cuenta en la pantalla de la red"). Es **idempotente**: reautorizar la misma cuenta hace upsert por
+`UNIQUE(platform, external_account_id)`, no duplica.
+
+**Token client-side, no en el `state`.** Para volver a `/connect/{token}` tras el callback sin filtrar el
+token por la URL de TikTok, el front guarda el token en `sessionStorage` antes de redirigir al OAuth y el
+callback vuelve a una ruta pública que retoma la lista con ese token. El token **no** viaja en el `state`.
+
+**Tipos de link + QR.** Link **genérico** (multi-red, el cliente elige) → checklist abierto + QR **azul
+Fil-Grama**. Link de **una red** (la agencia la elige al generar) → esa red + QR **del color de la red**
+(§QR). Conviven. Criterios en [[04-criterios-aceptacion]] (CU9).
+
+### QR del link de conexión (presentación; frontend)
+
+> El connect-link ya es una URL; el QR sólo la **encodea en imagen** para compartir (WhatsApp,
+> presencial). **Complementa** al link, no lo reemplaza. **Frontend-only** (librería `qr-code-styling`,
+> client-side, MIT); no toca backend/API/datos. Para WhatsApp el link de texto suele ganarle al QR (el
+> cliente recibe y toca en su teléfono); el QR brilla en presencial / dos pantallas.
+
+**Estilo: auto-detección por red + override azul (DECIDIDO).**
+- Connect-link **con `platform`** (link por red / reconexión) → QR con el **estilo de esa red**.
+- Connect-link **sin `platform`** (multi-red, el cliente elige) → QR **azul Fil-Grama** (neutro,
+  `--fg-primary` = `#1E66BC`).
+- **Override manual:** el operador puede forzar "azul Fil-Grama" en cualquier caso.
+- **Criterio:** auto-por-red es el **default** —la red casi siempre se conoce y el color/ícono ayuda al
+  cliente a reconocer qué va a conectar—; el azul cubre el multi-red y la consistencia de marca cuando
+  se prefiera.
+
+**Mapa de estilos** (módulos · ojos · ícono central):
+
+| Red | Módulos | Ojos | Ícono | Nota |
+|---|---|---|---|---|
+| Fil-Grama (neutro / multi-red) | azul `--fg-primary` `#1E66BC` | azul oscuro `#0F3F78` | **isotipo** `brand/isotipo.svg` | default cuando no hay red |
+| Instagram | degradado rosa→naranja→violeta | ídem | cámara | |
+| TikTok | casi negro `#16181F` | cian `#25F4EE` + magenta `#FE2C55` (desfasados) | nota ♪ | |
+| Facebook | azul FB `#1877F2` | azul FB | glyph "f" | **FB azul ≈ azul Fil-Grama → el ícono "f" del centro es lo que desambigua** |
+
+**QR por red (aprobado).** Si un cliente tiene varias redes, se genera **un QR/tarjeta por red** (cada
+uno con el connect-link de esa red y su estilo), en vez de un único link multi-red ambiguo.
+
+**Tarjeta para compartir (frame).** Encabezado "Conectá las redes de {Cliente}", QR al centro, pie con
+**aviso de vencimiento** ("vence en 72 h") + marca Fil-Grama, y el **link en texto debajo** (fallback si
+la cámara no engancha).
+
+**Acciones en el modal:** Descargar QR (PNG/SVG) · Copiar imagen (para pegar en WhatsApp) · Copiar link.
+
+**Legibilidad (no negociable).** `errorCorrectionLevel='H'` siempre que haya ícono/logo; ícono ≤ ~22 %
+del área; quiet zone presente; alto contraste módulos/fondo; las 3 esquinas (finder) y el margen deben
+sobrevivir a cualquier estilo. **Generación 100 % local: el token del link es una credencial — NUNCA
+mandarlo a un servicio externo de QR.** El **isotipo** del centro (QR neutro) es del mismo azul que los
+módulos → va con un **knockout blanco** (halo redondeado detrás) para que no se funda con el patrón.
+
+**Diferido:** frames tipo póster ("SCAN ME"), branding por cliente (logo del cliente al centro; por
+ahora marca de agencia). Criterios en [[04-criterios-aceptacion]] (CU9).
 
 ---
 

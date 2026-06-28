@@ -72,7 +72,7 @@
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | `/clients/{clientId}/accounts` | cuentas conectadas del cliente |
+| GET | `/clients/{clientId}/accounts` | cuentas conectadas del cliente (**excluye** las `REMOVED`: su historia se conserva pero no se listan) |
 | GET | `/accounts/{id}` | detalle (sin exponer tokens) |
 | POST | `/clients/{clientId}/accounts/connect/{platform}` `?accountId=` (opc) | inicia OAuth → `{authorizationUrl, state}`. `accountId` opc = **reconexión** de una cuenta conocida |
 | GET | `/oauth/callback/{platform}?code=&state=` | callback: canjea code, crea cuenta + credencial, redirige al front; **`409`** si la reconexión autorizó otra cuenta |
@@ -130,7 +130,7 @@ logueado con @Y". Ver [[09-flujo-oauth]] y la tabla `connect_links` en [[02-mode
 | POST | `/clients/{clientId}/connect-links` | crea un link temporal `{platform?, accountId?}` → `201` `{token, url, expiresAt}` (el `token` raw se devuelve **solo aquí**) |
 | GET | `/clients/{clientId}/connect-links` | lista los links **vigentes** del cliente (sin el token raw) |
 | DELETE | `/connect-links/{id}` | revoca el link → `204` |
-| GET | `/public/connect-links/{token}` | **público**: metadatos para la página de conexión `{clientName, platform?, expiresAt}`; `410` si venció/revocado, `404` si no existe |
+| GET | `/public/connect-links/{token}` | **público**: metadatos + cuentas ya conectadas para la página de conexión `{clientName, platform?, expiresAt, connectedAccounts:[{handle, platform}]}` (lista mínima del cliente para el checklist; sin métricas ni tokens); `410` si venció/revocado, `404` si no existe |
 | POST | `/public/connect-links/{token}/connect/{platform}` | **público**: valida el token y arranca el OAuth acotado a ese cliente → `{authorizationUrl}` |
 
 - Los endpoints `/public/**` son `permitAll` (sin Bearer) pero **acotados al `client_id` del token**,
