@@ -6,7 +6,7 @@ import { Button, Card, NetworkChip, networkLabel } from '../../components/ui';
 import { EmptyState, ErrorState, LoadingState, Skeleton } from '../../components/layout';
 import { StatusPill } from './clientBits';
 import { isBroken } from './accountStatus';
-import { useConnectFlow, useDisconnectAccount } from './mutations';
+import { useConnectFlow } from './mutations';
 
 function BackLink({ clientId }: { clientId: number }) {
   return (
@@ -27,7 +27,6 @@ export function ReconnectPage() {
   const accounts: AccountResponse[] = useMemo(() => accountsQ.data?.data ?? [], [accountsQ.data]);
 
   const { connect, pending, error } = useConnectFlow(id);
-  const disconnect = useDisconnectAccount(id);
 
   // Reconectar abre la pantalla de la red en otra pestaña; al volver, refrescamos.
   useEffect(() => {
@@ -147,14 +146,6 @@ export function ReconnectPage() {
                   </span>
                   <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
                     <StatusPill status={a.status} />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      loading={disconnect.isPending && disconnect.variables === a.id}
-                      onClick={() => a.id != null && disconnect.mutate(a.id)}
-                    >
-                      Desconectar
-                    </Button>
                     <Button
                       size="sm"
                       loading={pending === p}
