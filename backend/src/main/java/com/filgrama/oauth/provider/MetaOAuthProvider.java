@@ -1,6 +1,8 @@
 package com.filgrama.oauth.provider;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -87,6 +89,47 @@ public class MetaOAuthProvider implements OAuthProvider {
         return platform == Platform.INSTAGRAM
                 ? resolveInstagram(meta, session)
                 : resolveFacebook(meta, session);
+    }
+
+    /**
+     * Todas las cuentas elegibles del consentimiento (spec/09 §Multi-cuenta por red): todas las Páginas
+     * para FB; todas las Páginas con {@code instagram_business_account} para IG. Sin ninguna ⇒ un único
+     * candidato personal (el callback lo marca {@code UNSUPPORTED}). El {@code state} no se usa (Meta no
+     * tiene PKCE), pero respeta la firma de la interfaz.
+     */
+    @Override
+    public List<OAuthExchangeResult> exchangeCandidates(Platform platform, String code, String state) {
+        OAuthProperties.Meta meta = props.getMeta();
+        MetaSession s = authorize(platform, code, meta);
+        List<OAuthExchangeResult> candidates = platform == Platform.INSTAGRAM
+                ? instagramCandidates(meta, s)
+                : facebookCandidates(meta, s);
+        return candidates.isEmpty() ? List.of(personal(meta, s)) : candidates;
+    }
+
+    /** Todas las Páginas de FB como candidatos (cada una con su Page token). */
+    private List<OAuthExchangeResult> facebookCandidates(OAuthProperties.Meta meta, MetaSession s) {
+        List<OAuthExchangeResult> out = new ArrayList<>();
+        if (s.pages().isArray()) {
+            for (JsonNode page : s.pages()) {
+                out.add(facebookResult(meta, s, page));
+            }
+        }
+        return out;
+    }
+
+    /** Todas las Páginas con IG profesional como candidatos (resuelve el {@code @handle} de cada una). */
+    private List<OAuthExchangeResult> instagramCandidates(OAuthProperties.Meta meta, MetaSession s) {
+        List<OAuthExchangeResult> out = new ArrayList<>();
+        if (s.pages().isArray()) {
+            for (JsonNode page : s.pages()) {
+                OAuthExchangeResult ig = instagramResult(meta, s, page);
+                if (ig != null) {
+                    out.add(ig);
+                }
+            }
+        }
+        return out;
     }
 
     /**

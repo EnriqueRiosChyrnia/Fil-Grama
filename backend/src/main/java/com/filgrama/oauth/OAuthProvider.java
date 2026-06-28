@@ -1,5 +1,6 @@
 package com.filgrama.oauth;
 
+import java.util.List;
 import java.util.Optional;
 
 import com.filgrama.domain.enums.Platform;
@@ -48,6 +49,17 @@ public interface OAuthProvider {
      */
     default OAuthExchangeResult exchangeCode(Platform platform, String code, String state) {
         return exchangeCode(platform, code);
+    }
+
+    /**
+     * Canjea el {@code code} y devuelve <b>todas</b> las cuentas elegibles de ese consentimiento
+     * (spec/09 §Multi-cuenta por red). El default envuelve {@link #exchangeCode(Platform, String, String)}
+     * en una lista de un elemento (TikTok/Mock: un consentimiento = una cuenta). {@code MetaOAuthProvider}
+     * lo sobreescribe devolviendo todas las Páginas (FB) o todas las Páginas con IG profesional (IG) de
+     * {@code /me/accounts}, para que el callback ofrezca un <b>paso de selección</b> cuando hay más de una.
+     */
+    default List<OAuthExchangeResult> exchangeCandidates(Platform platform, String code, String state) {
+        return List.of(exchangeCode(platform, code, state));
     }
 
     /**

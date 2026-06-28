@@ -30,11 +30,13 @@ import com.filgrama.account.event.AccountConnectedEvent;
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
 import com.filgrama.account.dto.ReconnectResponse;
+import com.filgrama.account.dto.SelectionResponse;
 import com.filgrama.connectlink.ConnectLinkService;
 import com.filgrama.domain.AccountCredential;
 import com.filgrama.domain.Client;
 import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.AccountStatus;
+import com.filgrama.domain.enums.AccountType;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.error.ApiException;
 import com.filgrama.oauth.OAuthExchangeResult;
@@ -518,5 +520,111 @@ class AccountServiceTest {
                 .map(RecordComponent::getName)
                 .anyMatch(n -> n.toLowerCase().contains("token"));
         assertThat(leaks).as("AccountResponse no debe exponer campos de token").isFalse();
+    }
+
+    // ---- Fase 2: selección multi-Página/cuenta ----
+
+    private AccountService multiCandidateService() {
+        return new AccountService(accountRepo, credentialRepo, clientRepo,
+                new OAuthProviderRegistry(List.of(new MultiCandidateProvider())),
+                stateService, cipher, new OAuthProperties(), events, connectLinkService, CONNECT_DONE);
+    }
+
+    private static String tokenFrom(String selectTarget) {
+        return selectTarget.substring(selectTarget.indexOf("token=") + "token=".length());
+    }
+
+    @Test
+    void callbackMultiCandidatoNoCreaNadaYRedirigeASeleccion() {
+        AccountService svc = multiCandidateService();
+
+        // Connect NUEVO (sin cuenta esperada) que devuelve 2 candidatos → no crea cuentas, stashea y redirige.
+        String state = stateService.issue(1L, Platform.INSTAGRAM, 7L);
+        String target = svc.completeCallback("instagram", "code", state);
+
+        assertThat(target).contains("/oauth/select?token=").doesNotContain("accountId=");
+        verify(accountRepo, never()).save(any());
+        verify(credentialRepo, never()).save(any());
+        verify(events, never()).publishEvent(any());
+    }
+
+    @Test
+    void seleccionGetListaSinTokensYPostCreaSoloLasElegidas() {
+        AccountService svc = multiCandidateService();
+        String token = tokenFrom(svc.completeCallback("instagram", "code",
+                stateService.issue(1L, Platform.INSTAGRAM, 7L)));
+
+        // GET: lista los candidatos con nombre del cliente; el DTO no tiene campo de token (compile-time).
+        Client client = new Client();
+        client.setName("Cliente Uno");
+        when(clientRepo.findById(1L)).thenReturn(Optional.of(client));
+        SelectionResponse list = svc.getSelection(token);
+        assertThat(list.clientName()).isEqualTo("Cliente Uno");
+        assertThat(list.candidates()).extracting(SelectionResponse.CandidateView::externalAccountId)
+                .containsExactly("IG-1", "IG-2");
+
+        // POST: crea sólo IG-1 (con credencial cifrada + evento); IG-2 no se toca.
+        when(accountRepo.findByPlatformAndExternalAccountId(Platform.INSTAGRAM, "IG-1"))
+                .thenReturn(Optional.empty());
+        when(accountRepo.save(any())).thenAnswer(inv -> {
+            SocialAccount a = inv.getArgument(0);
+            if (a.getId() == null) {
+                a.setId(81L);
+            }
+            return a;
+        });
+        when(credentialRepo.findById(81L)).thenReturn(Optional.empty());
+
+        List<AccountResponse> created = svc.applySelection(token, List.of("IG-1"));
+
+        assertThat(created).hasSize(1);
+        verify(credentialRepo).save(any());
+        verify(events).publishEvent(new AccountConnectedEvent(81L));
+        verify(accountRepo, never()).findByPlatformAndExternalAccountId(Platform.INSTAGRAM, "IG-2");
+    }
+
+    @Test
+    void seleccionTokenEsDeUnSoloUso() {
+        AccountService svc = multiCandidateService();
+        String token = tokenFrom(svc.completeCallback("instagram", "code",
+                stateService.issue(1L, Platform.INSTAGRAM, 7L)));
+
+        // Primer POST (sin elegir ninguna) consume el token; el segundo acceso → 404.
+        assertThat(svc.applySelection(token, List.of())).isEmpty();
+        assertThatThrownBy(() -> svc.getSelection(token)).isInstanceOf(ApiException.class);
+    }
+
+    /** Provider de prueba: un consentimiento que devuelve 2 cuentas elegibles (multi-Página). */
+    private static final class MultiCandidateProvider implements OAuthProvider {
+        @Override
+        public boolean supports(Platform platform) {
+            return platform == Platform.INSTAGRAM;
+        }
+
+        @Override
+        public String buildAuthorizationUrl(Platform platform, String state) {
+            return "https://mock.oauth.local/select?state=" + state;
+        }
+
+        @Override
+        public OAuthExchangeResult exchangeCode(Platform platform, String code) {
+            return candidate("IG-1", "tok-1"); // sólo lo usaría la reconexión (no estos tests)
+        }
+
+        @Override
+        public List<OAuthExchangeResult> exchangeCandidates(Platform platform, String code, String state) {
+            return List.of(candidate("IG-1", "tok-1"), candidate("IG-2", "tok-2"));
+        }
+
+        @Override
+        public OAuthRefreshResult refreshToken(Platform platform, String accessToken, String refreshToken) {
+            throw new UnsupportedOperationException();
+        }
+
+        private static OAuthExchangeResult candidate(String id, String token) {
+            return new OAuthExchangeResult(id, "@" + id, "Cuenta " + id, AccountType.BUSINESS,
+                    "{\"source\":\"meta\"}", token, null, "bearer", "scope",
+                    Instant.now().plusSeconds(3600), "MU-1");
+        }
     }
 }

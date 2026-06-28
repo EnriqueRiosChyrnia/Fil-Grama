@@ -178,4 +178,57 @@ class MetaOAuthProviderTest {
         p.revokeToken(Platform.FACEBOOK, "", null);
         server.verify();
     }
+
+    // ---- Fase 2: exchangeCandidates (todas las cuentas elegibles del consentimiento) ----
+
+    @Test
+    void exchangeCandidatesReturnsAllFacebookPages() {
+        MetaOAuthProvider p = provider(props());
+        expectShortAndLong();
+        expectMe("META-USER-3", "Owner Three");
+        server.expect(requestTo(containsString("/me/accounts")))
+                .andRespond(withSuccess("{\"data\":["
+                        + "{\"id\":\"PAGE1\",\"name\":\"Page One\",\"access_token\":\"tok-1\"},"
+                        + "{\"id\":\"PAGE2\",\"name\":\"Page Two\",\"access_token\":\"tok-2\"}]}",
+                        MediaType.APPLICATION_JSON));
+
+        java.util.List<OAuthExchangeResult> candidates =
+                p.exchangeCandidates(Platform.FACEBOOK, "auth-code", null);
+
+        assertThat(candidates).hasSize(2);
+        assertThat(candidates).extracting(OAuthExchangeResult::externalAccountId)
+                .containsExactly("PAGE1", "PAGE2");
+        assertThat(candidates).allSatisfy(c -> assertThat(c.metaUserId()).isEqualTo("META-USER-3"));
+        server.verify();
+    }
+
+    @Test
+    void exchangeCandidatesInstagramOnlyPagesWithIg() {
+        MetaOAuthProvider p = provider(props());
+        expectShortAndLong();
+        expectMe("META-USER-4", "Owner Four");
+        server.expect(requestTo(containsString("/me/accounts")))
+                .andRespond(withSuccess("{\"data\":["
+                        + "{\"id\":\"P1\",\"name\":\"P1\",\"access_token\":\"t1\","
+                        + "\"instagram_business_account\":{\"id\":\"IG1\"}},"
+                        + "{\"id\":\"P2\",\"name\":\"P2\",\"access_token\":\"t2\"},"
+                        + "{\"id\":\"P3\",\"name\":\"P3\",\"access_token\":\"t3\","
+                        + "\"instagram_business_account\":{\"id\":\"IG3\"}}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("IG1?fields=username")))
+                .andRespond(withSuccess("{\"username\":\"uno\"}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("IG3?fields=username")))
+                .andRespond(withSuccess("{\"username\":\"tres\"}", MediaType.APPLICATION_JSON));
+
+        java.util.List<OAuthExchangeResult> candidates =
+                p.exchangeCandidates(Platform.INSTAGRAM, "auth-code", null);
+
+        // Sólo las Páginas con IG profesional (P2 sin IG queda fuera).
+        assertThat(candidates).hasSize(2);
+        assertThat(candidates).extracting(OAuthExchangeResult::externalAccountId)
+                .containsExactly("IG1", "IG3");
+        assertThat(candidates).extracting(OAuthExchangeResult::handle)
+                .containsExactly("@uno", "@tres");
+        server.verify();
+    }
 }

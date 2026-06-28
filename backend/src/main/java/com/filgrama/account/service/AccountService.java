@@ -1,8 +1,11 @@
 package com.filgrama.account.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -13,9 +16,12 @@ import org.springframework.web.util.UriComponentsBuilder;
 import com.filgrama.account.dto.AccountResponse;
 import com.filgrama.account.dto.ConnectResponse;
 import com.filgrama.account.dto.ReconnectResponse;
+import com.filgrama.account.dto.SelectionResponse;
+import com.filgrama.account.dto.SelectionResponse.CandidateView;
 import com.filgrama.account.event.AccountConnectedEvent;
 import com.filgrama.connectlink.ConnectLinkService;
 import com.filgrama.domain.AccountCredential;
+import com.filgrama.domain.Client;
 import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.AccountStatus;
 import com.filgrama.domain.enums.AccountType;
@@ -30,6 +36,8 @@ import com.filgrama.oauth.Platforms;
 import com.filgrama.oauth.TokenRevokedException;
 import com.filgrama.oauth.config.OAuthProperties;
 import com.filgrama.oauth.crypto.TokenCipher;
+import com.filgrama.oauth.select.OAuthSelectionStore;
+import com.filgrama.oauth.select.OAuthSelectionStore.PendingSelection;
 import com.filgrama.oauth.state.InvalidStateException;
 import com.filgrama.oauth.state.OAuthOrigin;
 import com.filgrama.oauth.state.OAuthState;
@@ -59,6 +67,12 @@ public class AccountService {
     private final ConnectLinkService connectLinkService;
     /** Página pública de resultado del flujo por link (éxito/error); el cliente no tiene sesión en la app. */
     private final String connectDoneUrl;
+    /**
+     * Candidatos pendientes de un consentimiento Meta multi-cuenta (spec/09 §Multi-cuenta por red). En
+     * memoria con TTL corto, mismo patrón que {@code PkceStore}; la lee/consume el paso de selección. El
+     * controller de selección llega vía {@link #getSelection}/{@link #applySelection}, no toca el store.
+     */
+    private final OAuthSelectionStore selectionStore = new OAuthSelectionStore();
 
     public AccountService(SocialAccountRepository accountRepo,
                           AccountCredentialRepository credentialRepo,
@@ -178,32 +192,64 @@ public class AccountService {
             return errorRedirect("invalid_state", origin);
         }
 
-        OAuthExchangeResult result;
+        // RECONEXIÓN (TAREA B): cuenta esperada → un solo candidato + guard 409. No hay selección: el
+        // open_id devuelto DEBE coincidir; si no, autorizaron con otra cuenta (sesión activa del navegador)
+        // y enganchar la equivocada sería peor que un error.
+        String expected = validated.expectedExternalAccountId();
+        if (expected != null) {
+            OAuthExchangeResult result;
+            try {
+                result = providers.forPlatform(platform).exchangeCode(platform, code, state);
+            } catch (TokenRevokedException e) {
+                return errorRedirect("token_revoked", origin);
+            } catch (OAuthException e) {
+                return errorRedirect("exchange_failed", origin);
+            }
+            if (!expected.equals(result.externalAccountId())) {
+                throw ApiException.conflict(
+                        "Autorizaste con otra cuenta; para reconectar %s cerrá sesión en %s e intentá de nuevo"
+                                .formatted(expectedHandle(platform, expected), platformLabel(platform)));
+            }
+            return finishSingle(platform, result, validated, origin);
+        }
+
+        // CONNECT NUEVO: el consentimiento puede traer varias cuentas (spec/09 §Multi-cuenta por red).
+        List<OAuthExchangeResult> candidates;
         try {
-            result = providers.forPlatform(platform).exchangeCode(platform, code, state);
+            candidates = providers.forPlatform(platform).exchangeCandidates(platform, code, state);
         } catch (TokenRevokedException e) {
             return errorRedirect("token_revoked", origin);
         } catch (OAuthException e) {
             return errorRedirect("exchange_failed", origin);
         }
 
-        // TAREA B: reconexión con cuenta esperada → el open_id devuelto DEBE coincidir.
-        // Si no, autorizaron con otra cuenta (sesión activa): rechazar sin linkear ni duplicar.
-        String expected = validated.expectedExternalAccountId();
-        if (expected != null && !expected.equals(result.externalAccountId())) {
-            throw ApiException.conflict(
-                    "Autorizaste con otra cuenta; para reconectar %s cerrá sesión en %s e intentá de nuevo"
-                            .formatted(expectedHandle(platform, expected), platformLabel(platform)));
+        if (candidates.isEmpty()) {
+            return errorRedirect("exchange_failed", origin);
+        }
+        if (candidates.size() == 1) {
+            return finishSingle(platform, candidates.get(0), validated, origin);
         }
 
-        // Cuenta personal de IG/FB → UNSUPPORTED, sin credencial.
+        // >1 candidato → stash server-side (con sus tokens) + redirigir al paso de selección. No se crea
+        // ninguna cuenta todavía: las crea el POST /oauth/select con las elegidas.
+        String selectionToken = selectionStore.stash(validated.clientId(), validated.userId(),
+                platform, origin, candidates);
+        return selectRedirect(selectionToken, origin);
+    }
+
+    /**
+     * Cierra el flujo de un único candidato (connect directo o reconexión ya validada): cuenta personal
+     * Meta → {@code UNSUPPORTED} sin credencial; el resto → {@code CONNECTED} + credencial cifrada +
+     * {@link AccountConnectedEvent} (escaneo inmediato) + redirect de éxito.
+     */
+    private String finishSingle(Platform platform, OAuthExchangeResult result, OAuthState validated,
+            OAuthOrigin origin) {
         boolean meta = platform == Platform.INSTAGRAM || platform == Platform.FACEBOOK;
         if (meta && result.accountType() == AccountType.PERSONAL) {
             upsertAccount(validated.clientId(), platform, result,
                     AccountStatus.UNSUPPORTED, validated.userId());
             return errorRedirect("unsupported_personal", origin);
         }
-
         SocialAccount account = upsertAccount(validated.clientId(), platform, result,
                 AccountStatus.CONNECTED, validated.userId());
         saveCredential(account.getId(), result.accessToken(), result.refreshToken(),
@@ -211,6 +257,59 @@ public class AccountService {
         // TAREA A: escaneo inmediato SOLO de esta cuenta (lo dispara el track Sync AFTER_COMMIT).
         events.publishEvent(new AccountConnectedEvent(account.getId()));
         return successRedirect(account.getId(), origin, platform);
+    }
+
+    // ---- selección multi-Página/cuenta (spec/09 §Multi-cuenta por red) ----
+
+    /**
+     * Lista los candidatos de un consentimiento multi-cuenta para que el front muestre el paso de
+     * selección. <b>Nunca</b> devuelve tokens — sólo datos públicos de cada cuenta. El {@code token}
+     * (alta entropía) es la credencial; inválido/expirado → {@code 404}. No consume el token (el front
+     * puede recargar la lista).
+     */
+    @Transactional(readOnly = true)
+    public SelectionResponse getSelection(String token) {
+        PendingSelection pending = selectionStore.peek(token)
+                .orElseThrow(() -> ApiException.notFound("Selección inválida o expirada"));
+        String clientName = clientRepo.findById(pending.clientId()).map(Client::getName).orElse(null);
+        List<CandidateView> views = pending.candidates().stream()
+                .map(c -> new CandidateView(c.externalAccountId(), c.handle(), c.displayName(),
+                        Platforms.path(pending.platform()),
+                        c.accountType() != null ? c.accountType().name() : null))
+                .toList();
+        return new SelectionResponse(clientName, views);
+    }
+
+    /**
+     * Da de alta las cuentas elegidas del paso de selección: por cada {@code externalAccountId} elegido,
+     * upsert + credencial cifrada + {@link AccountConnectedEvent} (igual que un connect directo). Las
+     * cuentas personales entre las elegidas quedan {@code UNSUPPORTED} sin credencial. <b>Consume</b> el
+     * token (un solo uso); inválido/expirado/ya usado → {@code 404}. Devuelve las cuentas creadas.
+     */
+    @Transactional
+    public List<AccountResponse> applySelection(String token, List<String> externalAccountIds) {
+        PendingSelection pending = selectionStore.consume(token)
+                .orElseThrow(() -> ApiException.notFound("Selección inválida o expirada"));
+        Set<String> chosen = externalAccountIds == null ? Set.of() : new HashSet<>(externalAccountIds);
+        List<AccountResponse> created = new ArrayList<>();
+        for (OAuthExchangeResult candidate : pending.candidates()) {
+            if (!chosen.contains(candidate.externalAccountId())) {
+                continue;
+            }
+            if (candidate.accountType() == AccountType.PERSONAL) {
+                SocialAccount acc = upsertAccount(pending.clientId(), pending.platform(), candidate,
+                        AccountStatus.UNSUPPORTED, pending.userId());
+                created.add(AccountResponse.from(acc));
+                continue;
+            }
+            SocialAccount acc = upsertAccount(pending.clientId(), pending.platform(), candidate,
+                    AccountStatus.CONNECTED, pending.userId());
+            saveCredential(acc.getId(), candidate.accessToken(), candidate.refreshToken(),
+                    candidate.tokenType(), candidate.scopes(), candidate.expiresAt());
+            events.publishEvent(new AccountConnectedEvent(acc.getId()));
+            created.add(AccountResponse.from(acc));
+        }
+        return created;
     }
 
     // ---- disconnect ----
@@ -480,5 +579,20 @@ public class AccountService {
                     .encode().toUriString();
         }
         return errorRedirect(errorCode);
+    }
+
+    /**
+     * Redirect al paso de selección multi-cuenta: {@code <base>/oauth/select?token=<selectionToken>}. La
+     * base sale del front del flujo ({@code frontRedirectUrl} para {@code APP}; {@code connectDoneUrl} para
+     * {@code LINK}, ruta pública que el front retoma con el connect-link guardado en {@code sessionStorage}).
+     * El {@code selectionToken} es la credencial: no viaja ningún token de red por la URL. spec/09 §Multi-cuenta.
+     */
+    private String selectRedirect(String selectionToken, OAuthOrigin origin) {
+        String baseUrl = origin == OAuthOrigin.LINK ? connectDoneUrl : props.getFrontRedirectUrl();
+        return UriComponentsBuilder.fromUriString(baseUrl)
+                .replacePath("/oauth/select")
+                .replaceQuery(null)
+                .queryParam("token", selectionToken)
+                .encode().toUriString();
     }
 }
