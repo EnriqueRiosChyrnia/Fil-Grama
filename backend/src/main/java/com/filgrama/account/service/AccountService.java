@@ -410,6 +410,11 @@ public class AccountService {
         account.setClientId(clientId);
         account.setPlatform(platform);
         account.setExternalAccountId(r.externalAccountId());
+        // Id del usuario Meta que autoriza (compliance). Solo Meta lo trae; no lo pisamos con null
+        // (TikTok) para conservar el valor denormalizado en re-conexiones.
+        if (r.metaUserId() != null) {
+            account.setMetaUserId(r.metaUserId());
+        }
         account.setHandle(r.handle());
         account.setDisplayName(r.displayName());
         account.setAccountType(r.accountType());

@@ -19,6 +19,8 @@ import com.filgrama.domain.enums.AccountType;
  * @param tokenType         ej. "bearer"
  * @param scopes            scopes concedidos (csv)
  * @param expiresAt         expiración del access token
+ * @param metaUserId        id del usuario Meta que autoriza (de {@code /me}); lo necesitan
+ *                          Deauthorize/Data Deletion para ubicar las filas. {@code null} en TikTok/Mock.
  */
 public record OAuthExchangeResult(
         String externalAccountId,
@@ -30,5 +32,17 @@ public record OAuthExchangeResult(
         String refreshToken,
         String tokenType,
         String scopes,
-        Instant expiresAt) {
+        Instant expiresAt,
+        String metaUserId) {
+
+    /**
+     * Back-compat para redes sin {@code meta_user_id} (TikTok/Mock): delega con {@code metaUserId = null}.
+     * Meta usa el constructor canónico de 11 args.
+     */
+    public OAuthExchangeResult(String externalAccountId, String handle, String displayName,
+            AccountType accountType, String capabilities, String accessToken, String refreshToken,
+            String tokenType, String scopes, Instant expiresAt) {
+        this(externalAccountId, handle, displayName, accountType, capabilities, accessToken,
+                refreshToken, tokenType, scopes, expiresAt, null);
+    }
 }

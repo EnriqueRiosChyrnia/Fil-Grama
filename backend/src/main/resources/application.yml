@@ -39,12 +39,24 @@ oauth:
   front-redirect-url: ${OAUTH_FRONT_REDIRECT_URL:http://localhost:5173/oauth/result}
   redirect-base-uri: ${OAUTH_REDIRECT_BASE_URI:http://localhost:8080}
   # Credenciales de apps — vacías hasta registrar las apps reales (dev usa el mock provider).
+  # Compliance Meta (App Review): tras el deploy, cargar en el App Dashboard de Meta
+  # (Facebook Login -> Settings) con la base pública del backend (= oauth.redirect-base-uri):
+  #   Deauthorize callback URL   = <api>/api/v1/meta/deauthorize
+  #   Data Deletion request URL  = <api>/api/v1/meta/data-deletion
+  # El app-secret firma el signed_request de esos callbacks (HMAC-SHA256): debe estar seteado en prod.
   meta:
     app-id: ${META_APP_ID:}
     app-secret: ${META_APP_SECRET:}
   tiktok:
     client-key: ${TIKTOK_CLIENT_KEY:}
     client-secret: ${TIKTOK_CLIENT_SECRET:}
+
+# Rutas públicas del front que el backend referencia en redirects/respuestas (sin sesión en la app).
+app:
+  # Página de resultado del flujo por connect-link (éxito/error). Ver AccountService.
+  connect-done-url: ${APP_CONNECT_DONE_URL:http://localhost:5173/connect/done}
+  # status_url del Data Deletion request de Meta: muestra el estado por confirmation_code (?code=).
+  data-deletion-status-url: ${APP_DATA_DELETION_STATUS_URL:http://localhost:5173/data-deletion}
 
 # CORS para la SPA del front (Vite :5173, CRA :3000). Lista separada por comas;
 # override por env CORS_ALLOWED_ORIGINS. Se aplica a /api/v1/** (ver SecurityConfig).

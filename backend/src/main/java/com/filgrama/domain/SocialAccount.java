@@ -42,6 +42,14 @@ public class SocialAccount {
     @Column(nullable = false)
     private String externalAccountId;
 
+    /**
+     * Id del usuario Meta que autorizó (del {@code /me} de Graph). Lo necesitan los callbacks de
+     * Deauthorize / Data Deletion de Meta para ubicar las filas por usuario (Meta manda este id, no
+     * el de Página/IG). Se denormaliza igual en cada fila hermana del mismo consentimiento. {@code null}
+     * en TikTok y filas previas a V7. spec/09 §Meta + §Ciclo de vida.
+     */
+    private String metaUserId;
+
     private String handle;
 
     private String displayName;

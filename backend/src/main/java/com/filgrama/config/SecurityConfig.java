@@ -59,6 +59,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/login",
                                 "/api/v1/auth/refresh",
                                 "/api/v1/oauth/callback/**",
+                                // Callbacks de compliance de Meta (deauthorize / data-deletion): Meta llama
+                                // sin auth, igual que el callback; los protege el signed_request firmado.
+                                "/api/v1/meta/**",
                                 // Link compartible de conexión de cuentas (CV): endpoints públicos sin auth.
                                 "/api/v1/public/**",
                                 // OpenAPI / Swagger UI (springdoc) — públicos para el codegen del front (orval).

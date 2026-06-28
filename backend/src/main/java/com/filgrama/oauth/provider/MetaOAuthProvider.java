@@ -3,6 +3,8 @@ package com.filgrama.oauth.provider;
 import java.time.Instant;
 import java.util.function.Supplier;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
@@ -44,6 +46,8 @@ import tools.jackson.databind.JsonNode;
 @Profile("!local & !test")
 public class MetaOAuthProvider implements OAuthProvider {
 
+    private static final Logger log = LoggerFactory.getLogger(MetaOAuthProvider.class);
+
     private final OAuthProperties props;
     private final RestClient http;
 
@@ -79,7 +83,19 @@ public class MetaOAuthProvider implements OAuthProvider {
     @Override
     public OAuthExchangeResult exchangeCode(Platform platform, String code) {
         OAuthProperties.Meta meta = props.getMeta();
+        MetaSession session = authorize(platform, code, meta);
+        return platform == Platform.INSTAGRAM
+                ? resolveInstagram(meta, session)
+                : resolveFacebook(meta, session);
+    }
 
+    /**
+     * Canje compartido por {@link #exchangeCode} y {@code exchangeCandidates}: code → user token corto →
+     * long-lived (60 d) → id del usuario Meta ({@code /me}) → {@code /me/accounts} (Páginas + IG). El
+     * {@code /me} es nuevo (compliance): el {@code meta_user_id} es lo que mandan Deauthorize/Data
+     * Deletion para ubicar las filas; en cuenta personal es además el id externo.
+     */
+    private MetaSession authorize(Platform platform, String code, OAuthProperties.Meta meta) {
         // 1) code → user token corto
         JsonNode shortTok = getJson(false, () -> meta.getGraphUrl() + "/oauth/access_token"
                 + "?client_id=" + enc(meta.getAppId())
@@ -99,58 +115,71 @@ public class MetaOAuthProvider implements OAuthProvider {
                 "Meta no devolvió long-lived token");
         Instant expiresAt = OAuthHttpSupport.expiresAt(longTok, "expires_in", 60L * 24 * 3600);
 
-        // 3) /me/accounts → Páginas + IG Business vinculado por Página
+        // 3) /me → id (+ nombre) del usuario Meta que autoriza (compliance: deauthorize/data-deletion).
+        JsonNode me = getJson(false, () -> meta.getGraphUrl() + "/me"
+                + "?fields=id,name&access_token=" + enc(userToken));
+        String metaUserId = require(OAuthHttpSupport.text(me, "id"), "Meta no devolvió el id del usuario");
+        String meName = OAuthHttpSupport.text(me, "name");
+
+        // 4) /me/accounts → Páginas + IG Business vinculado por Página
         JsonNode accounts = getJson(false, () -> meta.getGraphUrl() + "/me/accounts"
                 + "?fields=id,name,access_token,instagram_business_account"
                 + "&access_token=" + enc(userToken));
-        JsonNode data = accounts.path("data");
-
-        return platform == Platform.INSTAGRAM
-                ? resolveInstagram(meta, data, userToken, expiresAt)
-                : resolveFacebook(data, userToken, expiresAt, meta);
+        return new MetaSession(userToken, expiresAt, metaUserId, meName, accounts.path("data"));
     }
 
     /** Facebook: primera Página con su Page token (larga duración). Sin Páginas ⇒ personal. */
-    private OAuthExchangeResult resolveFacebook(JsonNode pages, String userToken, Instant expiresAt,
-            OAuthProperties.Meta meta) {
-        if (!pages.isArray() || pages.isEmpty()) {
-            return personal(meta, userToken, expiresAt);
+    private OAuthExchangeResult resolveFacebook(OAuthProperties.Meta meta, MetaSession s) {
+        if (s.pages().isArray()) {
+            for (JsonNode page : s.pages()) {
+                return facebookResult(meta, s, page);
+            }
         }
-        JsonNode page = pages.path(0);
+        return personal(meta, s);
+    }
+
+    /** Construye el resultado de una Página de FB con su Page token. */
+    private OAuthExchangeResult facebookResult(OAuthProperties.Meta meta, MetaSession s, JsonNode page) {
         String pageId = OAuthHttpSupport.text(page, "id");
         String pageToken = OAuthHttpSupport.text(page, "access_token");
         String name = OAuthHttpSupport.text(page, "name");
         return new OAuthExchangeResult(
                 require(pageId, "Página sin id"), name, name, AccountType.BUSINESS,
                 "{\"source\":\"meta\",\"login\":\"facebook_business\",\"pageId\":\"" + json(pageId) + "\"}",
-                pageToken != null ? pageToken : userToken, null, "bearer",
-                String.join(",", meta.getScopes()), expiresAt);
+                pageToken != null ? pageToken : s.userToken(), null, "bearer",
+                String.join(",", meta.getScopes()), s.expiresAt(), s.metaUserId());
     }
 
     /** Instagram: primera Página con {@code instagram_business_account}. Sin IG profesional ⇒ personal. */
-    private OAuthExchangeResult resolveInstagram(OAuthProperties.Meta meta, JsonNode pages,
-            String userToken, Instant expiresAt) {
-        if (pages.isArray()) {
-            for (JsonNode page : pages) {
-                JsonNode ig = page.path("instagram_business_account");
-                String igId = OAuthHttpSupport.text(ig, "id");
-                if (igId == null) {
-                    continue;
+    private OAuthExchangeResult resolveInstagram(OAuthProperties.Meta meta, MetaSession s) {
+        if (s.pages().isArray()) {
+            for (JsonNode page : s.pages()) {
+                OAuthExchangeResult ig = instagramResult(meta, s, page);
+                if (ig != null) {
+                    return ig;
                 }
-                String pageId = OAuthHttpSupport.text(page, "id");
-                String pageToken = OAuthHttpSupport.text(page, "access_token");
-                String token = pageToken != null ? pageToken : userToken;
-                String username = igUsername(meta, igId, token);
-                String handle = username != null ? "@" + username : OAuthHttpSupport.text(page, "name");
-                return new OAuthExchangeResult(
-                        igId, handle, username != null ? username : OAuthHttpSupport.text(page, "name"),
-                        AccountType.BUSINESS,
-                        "{\"source\":\"meta\",\"login\":\"facebook_business\",\"pageId\":\"" + json(pageId)
-                                + "\",\"igUserId\":\"" + json(igId) + "\"}",
-                        token, null, "bearer", String.join(",", meta.getScopes()), expiresAt);
             }
         }
-        return personal(meta, userToken, expiresAt);
+        return personal(meta, s);
+    }
+
+    /** Resultado de la cuenta IG vinculada a la Página, o {@code null} si la Página no tiene IG profesional. */
+    private OAuthExchangeResult instagramResult(OAuthProperties.Meta meta, MetaSession s, JsonNode page) {
+        String igId = OAuthHttpSupport.text(page.path("instagram_business_account"), "id");
+        if (igId == null) {
+            return null;
+        }
+        String pageId = OAuthHttpSupport.text(page, "id");
+        String pageToken = OAuthHttpSupport.text(page, "access_token");
+        String token = pageToken != null ? pageToken : s.userToken();
+        String username = igUsername(meta, igId, token);
+        String handle = username != null ? "@" + username : OAuthHttpSupport.text(page, "name");
+        return new OAuthExchangeResult(
+                igId, handle, username != null ? username : OAuthHttpSupport.text(page, "name"),
+                AccountType.BUSINESS,
+                "{\"source\":\"meta\",\"login\":\"facebook_business\",\"pageId\":\"" + json(pageId)
+                        + "\",\"igUserId\":\"" + json(igId) + "\"}",
+                token, null, "bearer", String.join(",", meta.getScopes()), s.expiresAt(), s.metaUserId());
     }
 
     /** {@code username} de la cuenta IG (best-effort); si falla, no rompe el canje. */
@@ -164,16 +193,18 @@ public class MetaOAuthProvider implements OAuthProvider {
         }
     }
 
-    /** Cuenta personal (sin Página/IG profesional): id estable del usuario, sin token operable. */
-    private OAuthExchangeResult personal(OAuthProperties.Meta meta, String userToken, Instant expiresAt) {
-        JsonNode me = getJson(false, () -> meta.getGraphUrl() + "/me"
-                + "?fields=id,name&access_token=" + enc(userToken));
-        String userId = OAuthHttpSupport.text(me, "id");
-        String name = OAuthHttpSupport.text(me, "name");
+    /** Cuenta personal (sin Página/IG profesional): el id externo es el propio {@code meta_user_id}. */
+    private OAuthExchangeResult personal(OAuthProperties.Meta meta, MetaSession s) {
         return new OAuthExchangeResult(
-                require(userId, "Meta no devolvió el id del usuario"), name, name,
+                s.metaUserId(), s.meName(), s.meName(),
                 AccountType.PERSONAL, "{\"source\":\"meta\",\"accountType\":\"personal\"}",
-                userToken, null, "bearer", String.join(",", meta.getScopes()), expiresAt);
+                s.userToken(), null, "bearer", String.join(",", meta.getScopes()),
+                s.expiresAt(), s.metaUserId());
+    }
+
+    /** Estado del canje Meta tras autorizar: tokens + id del usuario + Páginas crudas de {@code /me/accounts}. */
+    private record MetaSession(String userToken, Instant expiresAt, String metaUserId, String meName,
+            JsonNode pages) {
     }
 
     @Override
@@ -189,6 +220,35 @@ public class MetaOAuthProvider implements OAuthProvider {
                 "Meta no devolvió token en el refresh");
         return new OAuthRefreshResult(renewed, null, "bearer", null,
                 OAuthHttpSupport.expiresAt(longTok, "expires_in", 60L * 24 * 3600));
+    }
+
+    /**
+     * Revoca el acceso en Meta durante la baja de cuenta ({@code DELETE {graphUrl}/me/permissions?
+     * access_token=}; quita todos los permisos de la app para ese usuario). <b>Best-effort</b>: cualquier
+     * falla (red, 4xx, {@code 200} + envelope de error) se loguea en {@code warn} y <b>no</b> se propaga,
+     * para no bloquear la baja (la credencial local se borra igual). El endpoint sale del {@code graphUrl}
+     * configurado (mismo patrón que {@code redirectUri}); el token viaja solo server-side y nunca se loguea.
+     * spec/09 §Ciclo de vida.
+     */
+    @Override
+    public void revokeToken(Platform platform, String accessToken, String refreshToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return;
+        }
+        OAuthProperties.Meta meta = props.getMeta();
+        try {
+            String body = http.delete()
+                    .uri(meta.getGraphUrl() + "/me/permissions?access_token=" + enc(accessToken))
+                    .retrieve().body(String.class);
+            // Graph puede responder 200 + {"error":...} o {"success":true}: un envelope de error se traga.
+            if (OAuthHttpSupport.tree(body).path("error").isObject()) {
+                throw new OAuthException("Meta revoke devolvió error en el cuerpo");
+            }
+        } catch (RuntimeException e) {
+            // 4xx (RestClientResponseException), timeout/IO (ResourceAccessException), envelope de error
+            // (OAuthException) y JSON ilegible caen acá: la baja no se bloquea.
+            log.warn("Meta revoke falló (best-effort, la baja continúa): {}", e.getMessage());
+        }
     }
 
     // ---- HTTP / errores ----

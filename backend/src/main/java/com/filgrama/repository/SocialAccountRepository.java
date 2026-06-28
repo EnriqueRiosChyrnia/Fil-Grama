@@ -16,4 +16,7 @@ public interface SocialAccountRepository extends JpaRepository<SocialAccount, Lo
     List<SocialAccount> findByStatus(AccountStatus status);
 
     Optional<SocialAccount> findByPlatformAndExternalAccountId(Platform platform, String externalAccountId);
+
+    /** Cuentas Meta de un mismo usuario autorizante (compliance: deauthorize / data-deletion). */
+    List<SocialAccount> findByMetaUserId(String metaUserId);
 }
