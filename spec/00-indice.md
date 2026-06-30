@@ -3,10 +3,13 @@
 > Plataforma analítica de redes sociales para una agencia de marketing que gestiona las cuentas
 > orgánicas (Instagram, Facebook, TikTok) de sus clientes. Metodología: Spec-Driven Development.
 > Este índice es la entrada a la spec; cada capa es la fuente de verdad de su tema.
-> Última revisión global: 21-jun-2026.
+> Última revisión global: 28-jun-2026.
 >
-> **✅ PLAN APROBADO — 22-jun-2026.** La spec de alto nivel es la base acordada para implementar.
-> Próximo: detallar el flujo OAuth por red y/o bootstrap del proyecto Spring Boot.
+> **✅ PLAN APROBADO (22-jun-2026) · EN IMPLEMENTACIÓN.** Backend Spring Boot + frontend React andando en
+> **local (Docker)**, código en **GitHub**. **OAuth real de TikTok funcionando end-to-end** (sandbox, con
+> PKCE) y la **feature de connect-link completa** (link compartible → QR de marca → onboarding multi-cuenta
+> → selector de red). Próximo: Meta (IG/FB) App Review + onboarding real, y deploy en Vultr (capa 06).
+> Ver "Estado de implementación" abajo.
 
 ## Estado de las capas
 
@@ -17,14 +20,44 @@
 | 03 | [Contratos de API](03-contratos-api.md) | CERRADA |
 | 04 | [Criterios de aceptación](04-criterios-aceptacion.md) | CERRADA |
 | 05 | [Catálogo de métricas por red](05-catalogo-metricas.md) | CERRADA |
-| 06 | [Infraestructura y deploy (v1.5)](06-infra-deploy-v15.md) | PLANIFICADO |
+| 06 | [Infraestructura y deploy (v1.5)](06-infra-deploy-v15.md) | PLANIFICADO (+ dev: túnel cloudflared documentado) |
 | 07 | [Principios de UX y diseño](07-principios-ux.md) | CERRADA |
 | 08 | [Análisis con IA en reportes](08-ia-reportes.md) | PLANIFICADO (v2) |
-| 09 | [Flujo OAuth y manejo de tokens](09-flujo-oauth.md) | EN REVISIÓN |
+| 09 | [Flujo OAuth y manejo de tokens](09-flujo-oauth.md) | **IMPLEMENTADA** (TikTok e2e; Meta pend. App Review) |
 | 10 | [Estrategia del job diario](10-job-diario.md) | EN REVISIÓN |
 | 11 | [Escalabilidad a SaaS (nota futura)](11-escalabilidad-saas.md) | NOTA / FUTURO |
 | — | [Investigación de APIs (research)](research/05-investigacion-metricas-apis.md) | Referencia |
+| — | [Reporte automático IG + integración MCP/Claude (research)](research/06-reporte-automatico-ig-y-mcp.md) | Referencia |
 | — | [Paleta de marca](../design/filgrama-colors.css) | — |
+
+## Estado de implementación (28-jun-2026)
+
+**Andando en local (Docker), código en GitHub:** backend Spring Boot (auth JWT, clientes, cuentas,
+métricas, sync/job, reportes, storage) + frontend React.
+
+**OAuth real — TikTok (sandbox) end-to-end ✅:**
+- **PKCE obligatorio** (`code_challenge`/`code_verifier`), `disable_auto_auth`, refresh con rotación.
+- **Ciclo de vida de cuenta:** reconectar inteligente (refresh→reactivar), desconectar (pausa),
+  **eliminar/dar de baja** (solo admin, estado `REMOVED`, migración V6); el listado oculta `REMOVED`.
+- **Connect-link compartible** completo: endpoint público + página `/connect/{token}`, **QR de marca**
+  (azul Fil-Grama + estilo por red, `qr-code-styling`), **onboarding multi-cuenta** (lista de cuentas +
+  "conectar otra", sin callejón), **selector de red** al generar. Probado desde el celular (link por WhatsApp).
+- **Dev:** corre vía Docker + **túnel cloudflared** (`api`/`app.fil-grama.com`); detalle y migración a
+  prod en [[06-infra-deploy-v15]].
+
+**Pendiente:**
+- **Meta (Instagram/Facebook):** los providers existen, pero falta **App Review (Advanced Access)** y
+  probar el onboarding real — solo **TikTok** está testeado end-to-end.
+- **Deploy en Vultr** (capa 06): hoy todo local.
+- **Repo público → privatizar antes de prod** y mover ToS/Privacy fuera de GitHub Pages.
+- Validaciones runtime sueltas: scan real de los QR de color (caveat del cian en los finders de TikTok).
+
+**Próximo gran objetivo — Reporte automático de Instagram (handoff):** ver
+`tracks/FG-PLAN-reporte-automatico.md` (estado + orden de tracks + dónde continuar). Base hecha: se armó a
+mano el reporte mensual de un cliente real (Molino Don Alexis) = **referencia visual del PDF automático**;
+análisis API↔reporte en [[research/06-reporte-automatico-ig-y-mcp]]; **spec 02 y 05 actualizadas** (tabla
+`audience_demographics` + métricas v1.1). Futuro multi-tenant + IA por usuario (autogestión) en
+[[11-escalabilidad-saas]].
 
 ## Decisiones tomadas (resumen)
 
