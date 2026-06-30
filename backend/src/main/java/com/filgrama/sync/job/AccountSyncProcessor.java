@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.filgrama.domain.Post;
 import com.filgrama.domain.RawApiPayload;
 import com.filgrama.domain.SocialAccount;
+import com.filgrama.domain.enums.MetricLevel;
 import com.filgrama.domain.enums.RawScope;
 import com.filgrama.media.MediaService;
 import com.filgrama.repository.ClientRepository;
@@ -23,10 +24,12 @@ import com.filgrama.sync.capture.InsightsProvider;
 import com.filgrama.sync.capture.InsightsProviderRegistry;
 import com.filgrama.sync.capture.ThumbnailFetcher;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
 import com.filgrama.sync.capture.dto.RawPost;
 import com.filgrama.sync.capture.dto.StoryCapture;
+import com.filgrama.sync.derive.MetricCatalog;
 import com.filgrama.sync.derive.SnapshotDeriver;
 
 /**
@@ -48,6 +51,7 @@ public class AccountSyncProcessor {
     private final TokenAccessor tokenAccessor;
     private final Retrier retrier;
     private final SnapshotDeriver deriver;
+    private final MetricCatalog catalog;
     private final RawApiPayloadRepository rawRepository;
     private final PostRepository postRepository;
     private final ClientRepository clientRepository;
@@ -55,13 +59,15 @@ public class AccountSyncProcessor {
     private final ThumbnailFetcher thumbnailFetcher;
 
     public AccountSyncProcessor(InsightsProviderRegistry registry, TokenAccessor tokenAccessor,
-            Retrier retrier, SnapshotDeriver deriver, RawApiPayloadRepository rawRepository,
-            PostRepository postRepository, ClientRepository clientRepository, MediaService mediaService,
+            Retrier retrier, SnapshotDeriver deriver, MetricCatalog catalog,
+            RawApiPayloadRepository rawRepository, PostRepository postRepository,
+            ClientRepository clientRepository, MediaService mediaService,
             ThumbnailFetcher thumbnailFetcher) {
         this.registry = registry;
         this.tokenAccessor = tokenAccessor;
         this.retrier = retrier;
         this.deriver = deriver;
+        this.catalog = catalog;
         this.rawRepository = rawRepository;
         this.postRepository = postRepository;
         this.clientRepository = clientRepository;
@@ -83,6 +89,11 @@ public class AccountSyncProcessor {
         saveRaw(runId, account, RawScope.ACCOUNT, null, accountCapture.endpoint(), accountCapture.rawJson(), now);
         captured += deriver.deriveAccount(account, accountCapture, now, captureDate);
 
+        // (v1.1, best-effort) métricas extra de cuenta (splits follow_type, profile_views, taps por destino)
+        captured += captureAccountExtras(provider, account, token, runId, now, captureDate);
+        // (v1.1, best-effort, gateado por catálogo) demografía de audiencia → audience_demographics
+        captured += captureDemographics(provider, account, token, runId, now, captureDate);
+
         // (2-5) lista de posts + insights por post
         PostsListCapture list = retrier.withRetry("posts:" + account.getId(),
                 () -> provider.fetchPosts(account, token));
@@ -93,6 +104,8 @@ public class AccountSyncProcessor {
                     () -> provider.fetchPostInsights(account, rawPost, token));
             saveRaw(runId, account, RawScope.POST, post.getId(), insights.endpoint(), insights.rawJson(), now);
             captured += deriver.derivePost(account, post, insights.metrics(), now, captureDate);
+            // (v1.1, best-effort) métricas extra por media (reposts, profile_visits, watch-time de reels)
+            captured += capturePostExtras(provider, account, post, rawPost, token, runId, now, captureDate);
             // (6) miniatura real para el reporte: baja remote_thumbnail_url → storage (TAREA F).
             cacheThumbnailBestEffort(post);
         }
@@ -112,6 +125,74 @@ public class AccountSyncProcessor {
             }
         }
         return captured;
+    }
+
+    /**
+     * v1.1 best-effort: métricas extra de cuenta (splits {@code follow_type}, {@code profile_views},
+     * taps por destino). El provider no lanza; igual se envuelve por si una operación de BD falla.
+     * El deriver filtra por catálogo CORE/ACTIVE → las EXTENDED ({@code ig_reach_*}) no se persisten.
+     */
+    private int captureAccountExtras(InsightsProvider provider, SocialAccount account, String token,
+            Long runId, Instant now, LocalDate captureDate) {
+        try {
+            AccountCapture extras = provider.fetchAccountExtras(account, token);
+            if (extras == null || extras.metrics().isEmpty()) {
+                return 0;
+            }
+            saveRawIfPresent(runId, account, RawScope.ACCOUNT, null, extras.endpoint(), extras.rawJson(), now);
+            return deriver.deriveAccount(account, extras, now, captureDate);
+        } catch (RuntimeException e) {
+            log.warn("Extras de cuenta {} no capturados: {}", account.getId(), e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * v1.1 best-effort: demografía de audiencia → {@code audience_demographics}. Gateado por el catálogo
+     * (solo si {@code ig_follower_demographics} está CORE+ACTIVE para la red): apagar la captura = mover
+     * esa fila a EXTENDED/DEPRECATED, sin tocar código.
+     */
+    private int captureDemographics(InsightsProvider provider, SocialAccount account, String token,
+            Long runId, Instant now, LocalDate captureDate) {
+        if (!catalog.captures(account.getPlatform(), MetricLevel.ACCOUNT, "ig_follower_demographics")) {
+            return 0;
+        }
+        try {
+            AudienceDemographicsCapture demo = provider.fetchAudienceDemographics(account, token);
+            if (demo == null || demo.segments().isEmpty()) {
+                return 0;
+            }
+            saveRawIfPresent(runId, account, RawScope.ACCOUNT, null, demo.endpoint(), demo.rawJson(), now);
+            return deriver.deriveDemographics(account, demo, now, captureDate);
+        } catch (RuntimeException e) {
+            log.warn("Demografía de la cuenta {} no capturada: {}", account.getId(), e.getMessage());
+            return 0;
+        }
+    }
+
+    /** v1.1 best-effort: métricas extra por media ({@code reposts}, {@code profile_visits}, watch-time de reels). */
+    private int capturePostExtras(InsightsProvider provider, SocialAccount account, Post post, RawPost rawPost,
+            String token, Long runId, Instant now, LocalDate captureDate) {
+        try {
+            PostInsightsCapture extras = provider.fetchPostExtras(account, rawPost, token);
+            if (extras == null || extras.metrics().isEmpty()) {
+                return 0;
+            }
+            saveRawIfPresent(runId, account, RawScope.POST, post.getId(), extras.endpoint(), extras.rawJson(), now);
+            return deriver.derivePost(account, post, extras.metrics(), now, captureDate);
+        } catch (RuntimeException e) {
+            log.warn("Extras del post {} no capturados: {}", post.getId(), e.getMessage());
+            return 0;
+        }
+    }
+
+    /** Guarda el crudo solo si hay payload (las capturas extra vacías no escriben filas en {@code raw_api_payloads}). */
+    private void saveRawIfPresent(Long runId, SocialAccount account, RawScope scope, Long postId,
+            String endpoint, String payloadJson, Instant capturedAt) {
+        if (payloadJson == null || payloadJson.isBlank()) {
+            return;
+        }
+        saveRaw(runId, account, scope, postId, endpoint, payloadJson, capturedAt);
     }
 
     /**

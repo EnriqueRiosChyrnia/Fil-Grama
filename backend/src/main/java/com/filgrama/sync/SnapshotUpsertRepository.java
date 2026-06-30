@@ -40,6 +40,15 @@ public class SnapshotUpsertRepository {
                           captured_at = EXCLUDED.captured_at
             """;
 
+    private static final String DEMOGRAPHIC_UPSERT = """
+            INSERT INTO audience_demographics
+                (client_id, account_id, scope, breakdown_type, breakdown_value, value, captured_at, capture_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (account_id, scope, breakdown_type, breakdown_value, capture_date)
+            DO UPDATE SET value = EXCLUDED.value,
+                          captured_at = EXCLUDED.captured_at
+            """;
+
     private final JdbcTemplate jdbc;
 
     public SnapshotUpsertRepository(JdbcTemplate jdbc) {
@@ -55,6 +64,13 @@ public class SnapshotUpsertRepository {
     public void upsertPostSnapshot(Long clientId, Long accountId, Long postId, String metricKey,
             BigDecimal value, Instant capturedAt, LocalDate captureDate) {
         jdbc.update(POST_UPSERT, clientId, accountId, postId, metricKey, value,
+                OffsetDateTime.ofInstant(capturedAt, ZoneOffset.UTC), captureDate);
+    }
+
+    /** Upsert de un segmento de demografía (v1.1). Re-run del día sobre el mismo segmento = un valor, no duplica. */
+    public void upsertDemographic(Long clientId, Long accountId, String scope, String breakdownType,
+            String breakdownValue, BigDecimal value, Instant capturedAt, LocalDate captureDate) {
+        jdbc.update(DEMOGRAPHIC_UPSERT, clientId, accountId, scope, breakdownType, breakdownValue, value,
                 OffsetDateTime.ofInstant(capturedAt, ZoneOffset.UTC), captureDate);
     }
 }

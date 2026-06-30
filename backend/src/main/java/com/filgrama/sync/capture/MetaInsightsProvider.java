@@ -18,6 +18,8 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.domain.enums.PostType;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
+import com.filgrama.sync.capture.dto.DemographicSegment;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
 import com.filgrama.sync.capture.dto.RawPost;
@@ -241,6 +243,121 @@ public class MetaInsightsProvider implements InsightsProvider {
         return stories;
     }
 
+    // ---- extras v1.1 (FG-T1): llamadas Graph aparte y best-effort ----
+
+    /**
+     * Splits {@code follow_type} de views/reach, {@code profile_views} y taps por destino. Cada
+     * sub-llamada es independiente y best-effort ({@link #graphGetQuietly}): un nombre/breakdown que
+     * la API rechace devuelve {@code null} y se omite, sin tumbar las demás ni la captura CORE. Solo IG.
+     */
+    @Override
+    public AccountCapture fetchAccountExtras(SocialAccount account, String token) {
+        if (account.getPlatform() != Platform.INSTAGRAM) {
+            return new AccountCapture(null, null, Map.of());
+        }
+        String id = enc(account.getExternalAccountId());
+        Map<String, BigDecimal> metrics = new LinkedHashMap<>();
+        Map<String, String> raws = new LinkedHashMap<>();
+
+        String profileViews = graphGetQuietly("/" + id + "/insights"
+                + "?metric=profile_views&period=day&metric_type=total_value&access_token=" + enc(token));
+        if (profileViews != null) {
+            raws.put("profile_views", profileViews);
+            put(metrics, "ig_profile_views", insightsByName(InsightsHttpSupport.tree(profileViews)).get("profile_views"));
+        }
+
+        String viewsSplit = graphGetQuietly("/" + id + "/insights"
+                + "?metric=views&period=day&metric_type=total_value&breakdown=follow_type&access_token=" + enc(token));
+        if (viewsSplit != null) {
+            raws.put("views_follow_type", viewsSplit);
+            forEachBreakdown(InsightsHttpSupport.tree(viewsSplit), (dim, val) ->
+                    put(metrics, isNonFollower(dim) ? "ig_views_non_followers" : "ig_views_followers", val));
+        }
+
+        String reachSplit = graphGetQuietly("/" + id + "/insights"
+                + "?metric=reach&period=day&metric_type=total_value&breakdown=follow_type&access_token=" + enc(token));
+        if (reachSplit != null) {
+            raws.put("reach_follow_type", reachSplit);
+            forEachBreakdown(InsightsHttpSupport.tree(reachSplit), (dim, val) ->
+                    put(metrics, isNonFollower(dim) ? "ig_reach_non_followers" : "ig_reach_followers", val));
+        }
+
+        String taps = graphGetQuietly("/" + id + "/insights"
+                + "?metric=profile_links_taps&period=day&metric_type=total_value&breakdown=contact_button_type"
+                + "&access_token=" + enc(token));
+        if (taps != null) {
+            raws.put("profile_links_taps", taps);
+            BigDecimal[] total = {null};
+            forEachBreakdown(InsightsHttpSupport.tree(taps), (dim, val) -> {
+                total[0] = total[0] == null ? val : total[0].add(val);
+                String key = tapsKey(dim);
+                if (key != null) {
+                    put(metrics, key, val);
+                }
+            });
+            put(metrics, "ig_profile_links_taps", total[0]);
+        }
+
+        return new AccountCapture("GET /" + V + "/{ig-user-id}/insights (extras v1.1)", combineAll(raws), metrics);
+    }
+
+    /**
+     * Métricas extra por media: {@code reposts}, {@code profile_visits} y (solo reels)
+     * {@code ig_reels_avg_watch_time} (la API la da en ms → se persiste en segundos). Llamada aparte
+     * y best-effort para no romper {@link #fetchPostInsights}. Solo IG.
+     */
+    @Override
+    public PostInsightsCapture fetchPostExtras(SocialAccount account, RawPost post, String token) {
+        if (account.getPlatform() != Platform.INSTAGRAM) {
+            return new PostInsightsCapture(null, null, Map.of());
+        }
+        String id = enc(post.externalPostId());
+        String metricList = "reposts,profile_visits"
+                + (post.postType() == PostType.REEL ? ",ig_reels_avg_watch_time" : "");
+        String body = graphGetQuietly("/" + id + "/insights?metric=" + metricList + "&access_token=" + enc(token));
+        if (body == null) {
+            return new PostInsightsCapture(null, null, Map.of());
+        }
+        Map<String, BigDecimal> insights = insightsByName(InsightsHttpSupport.tree(body));
+        Map<String, BigDecimal> metrics = new LinkedHashMap<>();
+        put(metrics, "ig_post_reposts", insights.get("reposts"));
+        put(metrics, "ig_post_profile_visits", insights.get("profile_visits"));
+        BigDecimal watchMs = insights.get("ig_reels_avg_watch_time");
+        if (watchMs != null) {
+            metrics.put("ig_reels_avg_watch_time",
+                    watchMs.divide(BigDecimal.valueOf(1000), 3, java.math.RoundingMode.HALF_UP));
+        }
+        return new PostInsightsCapture("GET /" + V + "/{ig-media-id}/insights (extras v1.1)", body, metrics);
+    }
+
+    /**
+     * Demografía de seguidores (lifetime, requiere ≥100 seguidores). Una sub-llamada best-effort por
+     * breakdown (age/gender/city/country); cada segmento → una fila de {@code audience_demographics}.
+     * Solo IG en v1.1.
+     */
+    @Override
+    public AudienceDemographicsCapture fetchAudienceDemographics(SocialAccount account, String token) {
+        if (account.getPlatform() != Platform.INSTAGRAM) {
+            return new AudienceDemographicsCapture(null, null, List.of());
+        }
+        String id = enc(account.getExternalAccountId());
+        List<DemographicSegment> segments = new ArrayList<>();
+        Map<String, String> raws = new LinkedHashMap<>();
+        for (String[] bd : new String[][] {{"age", "AGE"}, {"gender", "GENDER"}, {"city", "CITY"}, {"country", "COUNTRY"}}) {
+            String body = graphGetQuietly("/" + id + "/insights"
+                    + "?metric=follower_demographics&period=lifetime&metric_type=total_value&breakdown=" + bd[0]
+                    + "&access_token=" + enc(token));
+            if (body == null) {
+                continue;
+            }
+            raws.put("follower_demographics_" + bd[0], body);
+            forEachBreakdown(InsightsHttpSupport.tree(body), (dim, val) ->
+                    segments.add(new DemographicSegment("FOLLOWER", bd[1], dim, val)));
+        }
+        return new AudienceDemographicsCapture("GET /" + V + "/{ig-user-id}/insights (follower_demographics)",
+                combineAll(raws), segments);
+    }
+
     // ---- helpers ----
 
     /** {@code path} relativo (con {@code /}) → URL absoluta versionada del Graph API. */
@@ -248,6 +365,70 @@ public class MetaInsightsProvider implements InsightsProvider {
         var response = InsightsHttpSupport.get(http, GRAPH_BASE + V + path, null);
         InsightsHttpSupport.throttleOnUsage(response.getHeaders());
         return response.getBody() == null ? "{}" : response.getBody();
+    }
+
+    /** GET best-effort: devuelve el body, o {@code null} si la llamada falla (no propaga el error). */
+    private String graphGetQuietly(String path) {
+        try {
+            return graphGet(path);
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Recorre {@code data[].total_value.breakdowns[].results[]} de un insight con breakdown y entrega
+     * al sink {@code (primer dimension_value, value)} de cada segmento con valor numérico.
+     */
+    private void forEachBreakdown(JsonNode tree, java.util.function.BiConsumer<String, BigDecimal> sink) {
+        for (JsonNode metric : tree.path("data")) {
+            for (JsonNode breakdown : metric.path("total_value").path("breakdowns")) {
+                for (JsonNode result : breakdown.path("results")) {
+                    JsonNode dims = result.path("dimension_values");
+                    if (!dims.isArray() || dims.size() == 0) {
+                        continue;
+                    }
+                    String dim = dims.get(0).asText();
+                    BigDecimal value = InsightsHttpSupport.number(result, "value");
+                    if (dim != null && !dim.isBlank() && value != null) {
+                        sink.accept(dim, value);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean isNonFollower(String dim) {
+        return upper(dim).contains("NON");
+    }
+
+    /** Mapea el {@code contact_button_type} a la {@code metric_key} de tap por destino, o {@code null}. */
+    private static String tapsKey(String dim) {
+        String d = upper(dim);
+        if (d.contains("WHATSAPP")) {
+            return "ig_taps_whatsapp";
+        }
+        if (d.contains("DIRECTION")) {
+            return "ig_taps_direction";
+        }
+        return null;
+    }
+
+    /** Combina varias respuestas crudas ({@code clave -> json}) en un solo objeto crudo; {@code null} si no hay ninguna. */
+    private static String combineAll(Map<String, String> raws) {
+        if (raws.isEmpty()) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, String> e : raws.entrySet()) {
+            if (!first) {
+                sb.append(',');
+            }
+            first = false;
+            sb.append('"').append(e.getKey()).append("\":").append(safe(e.getValue()));
+        }
+        return sb.append('}').toString();
     }
 
     /** {@code data[]} de Meta insights → {nombre de métrica de la API → valor}. */

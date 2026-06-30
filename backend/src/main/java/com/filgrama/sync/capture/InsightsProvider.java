@@ -5,6 +5,7 @@ import java.util.List;
 import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
 import com.filgrama.sync.capture.dto.RawPost;
@@ -39,6 +40,33 @@ public interface InsightsProvider {
     /** Stories activas (solo Instagram; vacío para el resto). */
     default List<StoryCapture> fetchStories(SocialAccount account, String accessToken) {
         return List.of();
+    }
+
+    /**
+     * Métricas <b>extra</b> de cuenta del catálogo v1.1 que se piden en llamadas Graph aparte y
+     * <b>best-effort</b> (splits {@code follow_type} de views/reach, {@code profile_views}, taps por
+     * destino): {@code metric_key -> value}. <b>Nunca lanza</b> — si la API falla o no trae el campo,
+     * devuelve lo que pudo (o vacío), para no tumbar la captura CORE de {@link #fetchAccountInsights}.
+     * Default vacío: las redes/implementaciones que no lo soportan no escriben nada.
+     */
+    default AccountCapture fetchAccountExtras(SocialAccount account, String accessToken) {
+        return new AccountCapture(null, null, java.util.Map.of());
+    }
+
+    /**
+     * Métricas <b>extra</b> por publicación del catálogo v1.1 ({@code reposts}, {@code profile_visits},
+     * {@code ig_reels_avg_watch_time}), pedidas en llamada aparte y <b>best-effort</b>. <b>Nunca lanza</b>.
+     */
+    default PostInsightsCapture fetchPostExtras(SocialAccount account, RawPost post, String accessToken) {
+        return new PostInsightsCapture(null, null, java.util.Map.of());
+    }
+
+    /**
+     * Demografía de audiencia (v1.1) → segmentos para {@code audience_demographics}. Llamada aparte y
+     * <b>best-effort</b>; <b>nunca lanza</b>. Default vacío (solo IG la implementa en v1.1).
+     */
+    default AudienceDemographicsCapture fetchAudienceDemographics(SocialAccount account, String accessToken) {
+        return new AudienceDemographicsCapture(null, null, List.of());
     }
 
     /** {@code true} si es el provider fake (selección preferente en local/test). */

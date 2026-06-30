@@ -56,6 +56,40 @@
 
 > `impressions` (cuenta y post) **deprecada** → no se incluye; se usa `views`.
 
+### v1.1 — Adiciones para reporte completo de Instagram
+
+> Addendum 30-jun-2026. Surge de mapear el reporte real de @molinodonalexis contra este catálogo
+> (ver [[research/06-reporte-automatico-ig-y-mcp]]). Promueve filas a CORE y agrega otras para que el
+> **reporte mensual de IG salga completo y automático**. Activan agregando filas al catálogo + (demografía)
+> la tabla `audience_demographics` en [[02-modelo-de-datos]]. **Validar en sandbox** las marcadas ⚠.
+
+**Promovidas a CORE** (existían como EXTENDED): `ig_follows_and_unfollows` (altas/bajas, req. ≥100
+followers), `ig_follower_demographics` (Público: ciudades/países/edad/sexo, lifetime, req. ≥100),
+`ig_reels_avg_watch_time` (tiempo medio de visionado), `ig_profile_links_taps` (taps de contacto).
+
+**Nuevas:**
+| metric_key | display_name | level | api_field / fuente | unit | tier | nota |
+|---|---|---|---|---|---|---|
+| `ig_profile_views` | Visitas al perfil | ACCOUNT | `profile_views` (total_value) | count | CORE | ⚠ validar como total del rango; plan B: sumar `profile_visits` de los media |
+| `ig_views_followers` | Visualizaciones — seguidores | ACCOUNT | `views` breakdown `follow_type` | count | CORE | ⚠ breakdown |
+| `ig_views_non_followers` | Visualizaciones — no seguidores | ACCOUNT | `views` breakdown `follow_type` | count | CORE | ⚠ breakdown |
+| `ig_reach_followers` | Alcance — seguidores | ACCOUNT | `reach` breakdown `follow_type` | count | EXTENDED | ⚠ |
+| `ig_reach_non_followers` | Alcance — no seguidores | ACCOUNT | `reach` breakdown `follow_type` | count | EXTENDED | ⚠ |
+| `ig_taps_whatsapp` | Clics a WhatsApp | ACCOUNT | `profile_links_taps` breakdown `contact_button_type` | count | CORE | ⚠ atribución; si no es fiable, usar acortador/UTM propio |
+| `ig_taps_direction` | Clics a ubicación (Maps) | ACCOUNT | `profile_links_taps` breakdown | count | CORE | ⚠ |
+| `ig_post_reposts` | Reposts del post | POST | `reposts` | count | CORE | ⚠ validar |
+| `ig_post_profile_visits` | Visitas al perfil desde el post | POST | `profile_visits` (media) | count | CORE | |
+
+**Derivadas (no se piden a la API):**
+- **Visualizaciones por tipo de contenido** (Reels/Historias/Pub %): agregando `post_metric_snapshots`
+  por `posts.post_type` — **camino seguro, no depende del breakdown**.
+- `*_follower_share` = views_followers / (views_followers + views_non_followers) — CORE.
+- `ig_repost_rate` = reposts / alcance — EXTENDED.
+
+**Limitación a confirmar (⚠ [no probable]):** el **split seguidor/no-seguidor de las INTERACCIONES**
+(que la app de IG muestra) no aparece claro en el API. Si en sandbox no está, el reporte muestra solo el
+split de *visualizaciones*; **no prometerlo al cliente** hasta confirmar.
+
 ---
 
 ## Facebook (Pages)

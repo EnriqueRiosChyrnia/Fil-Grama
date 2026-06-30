@@ -5,6 +5,8 @@
 > Motor: PostgreSQL. PKs `bigint generated always as identity` salvo que se indique.
 > Convención: `snake_case`, timestamps en `timestamptz` (UTC).
 > Adición jun-2026: tabla `connect_links` (link compartible de conexión). Ver [[09-flujo-oauth]].
+> Adición v1.1 (30-jun-2026): tabla `audience_demographics` (demografía del reporte). Ver
+> [[05-catalogo-metricas]] §v1.1 y [[research/06-reporte-automatico-ig-y-mcp]].
 
 ## Principios
 
@@ -224,6 +226,28 @@ Métricas por publicación. Una fila por (post, métrica, captura).
 | | | **UNIQUE (post_id, metric_key, capture_date)** → re-run del día hace upsert, no duplica |
 | | | INDEX (post_id, metric_key, captured_at) |
 | | | INDEX (client_id, captured_at) |
+
+### audience_demographics  *(append-only)* — adición v1.1
+Demografía de audiencia para el bloque "Público" del reporte. Snapshot diario, formato largo. Solo
+IG/FB (TikTok no la expone por API estándar). Ver [[05-catalogo-metricas]] §v1.1 y
+[[research/06-reporte-automatico-ig-y-mcp]].
+| Columna | Tipo | Notas |
+|---|---|---|
+| id | bigint PK | |
+| client_id | bigint NOT NULL | denormalizado |
+| account_id | bigint FK → social_accounts(id) NOT NULL | |
+| scope | text NOT NULL | `FOLLOWER` \| `REACHED` \| `ENGAGED` (qué audiencia) |
+| breakdown_type | text NOT NULL | `AGE` \| `GENDER` \| `CITY` \| `COUNTRY` |
+| breakdown_value | text NOT NULL | ej. `25-34`, `F`, `Encarnación`, `PY` |
+| value | numeric(20,4) NOT NULL | conteo del segmento |
+| captured_at | timestamptz NOT NULL | |
+| capture_date | date NOT NULL | día de captura; idempotencia |
+| | | **UNIQUE (account_id, scope, breakdown_type, breakdown_value, capture_date)** → re-run del día = upsert |
+| | | INDEX (client_id, account_id, scope, capture_date) |
+
+> **Los splits seguidor/no-seguidor NO necesitan tabla nueva:** van como filas normales de
+> `account_metric_snapshots` con `metric_key` = `ig_views_followers` / `ig_views_non_followers` / etc.
+> (ver [[05-catalogo-metricas]] §v1.1). El esquema append-only ya los soporta.
 
 ### metrics  *(catálogo de referencia)*
 Define las métricas que se capturan y cómo mostrarlas en reportes.

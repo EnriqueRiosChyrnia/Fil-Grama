@@ -39,4 +39,13 @@ public class MetricCatalog {
                         .map(com.filgrama.domain.Metric::getKey)
                         .collect(Collectors.toUnmodifiableSet()));
     }
+
+    /**
+     * ¿La {@code key} está CORE+ACTIVE para esa red y nivel? Gateo data-driven: el job consulta esto
+     * antes de pedir datos opcionales (ej. demografía vía {@code ig_follower_demographics}); apagarlo
+     * = cambiar la fila del catálogo a EXTENDED/DEPRECATED, sin tocar código.
+     */
+    public boolean captures(Platform platform, MetricLevel level, String key) {
+        return coreActiveKeys(platform, level).contains(key);
+    }
 }
