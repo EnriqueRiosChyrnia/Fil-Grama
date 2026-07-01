@@ -20,7 +20,8 @@ import org.springframework.stereotype.Repository;
  * que los servicios per-cuenta del track D no exponen. Vive en el paquete dueño del track — NO toca
  * {@code com.filgrama.repository} ni el repo de D. <b>Toda consulta filtra por {@code client_id}</b>
  * (multi-tenant) y es de sólo lectura sobre {@code posts} / {@code post_metric_snapshots} (y
- * {@code account_metric_snapshots} sólo para detectar presencia de baseline del período anterior).
+ * {@code account_metric_snapshots} sólo para detectar presencia de baseline del período anterior;
+ * {@code audience_demographics} para el bloque "Público" v1.1 — spec/05 §v1.1 / research/06 §3).
  */
 @Repository
 public class ReportQueryRepository {
@@ -43,6 +44,14 @@ public class ReportQueryRepository {
 
     /** Par (red, metric_key) con al menos un snapshot de cuenta en un rango. */
     public record PlatformMetricKey(String platform, String metricKey) {
+    }
+
+    /**
+     * Segmento de demografía agregado a nivel red: suma, por cuenta, el último valor capturado en el
+     * rango de cada {@code (breakdown_type, breakdown_value)}, y luego suma esas cuentas entre sí
+     * (mismo patrón "último valor por cuenta, sumado" que {@code SummaryService}).
+     */
+    public record DemographicRow(String platform, String breakdownType, String breakdownValue, BigDecimal value) {
     }
 
     /**
@@ -128,6 +137,43 @@ public class ReportQueryRepository {
         MapSqlParameterSource params = baseParams(clientId, from, to).addValue("postIds", postIds);
         return jdbc.query(sql, params, (rs, n) -> new PostMetricValue(
                 rs.getLong("post_id"), rs.getString("metric_key"), rs.getBigDecimal("val")));
+    }
+
+    /**
+     * Demografía de seguidores ({@code scope='FOLLOWER'}, research/06 §1) de las cuentas del cliente en
+     * {@code [from, to]}, agregada por red + dimensión + segmento. Sin redes ⇒ vacío (misma convención
+     * que {@link #findPosts}). {@code accountIds} no vacío restringe a esas cuentas (reporte por cuenta).
+     */
+    public List<DemographicRow> findDemographics(Long clientId, Collection<String> platforms,
+                                                 Collection<Long> accountIds, LocalDate from, LocalDate to) {
+        if (platforms == null || platforms.isEmpty()) {
+            return List.of();
+        }
+        boolean byAccount = accountIds != null && !accountIds.isEmpty();
+        String sql = """
+                SELECT platform, breakdown_type, breakdown_value, SUM(latest_val) AS total
+                FROM (
+                    SELECT a.platform AS platform, d.account_id, d.breakdown_type, d.breakdown_value,
+                           (ARRAY_AGG(d.value ORDER BY d.capture_date DESC))[1] AS latest_val
+                    FROM audience_demographics d
+                    JOIN social_accounts a ON a.id = d.account_id
+                    WHERE d.client_id = :clientId
+                      AND d.scope = 'FOLLOWER'
+                      AND a.platform IN (:platforms)
+                      %s
+                      AND (CAST(:fromDate AS date) IS NULL OR d.capture_date >= CAST(:fromDate AS date))
+                      AND (CAST(:toDate AS date)   IS NULL OR d.capture_date <= CAST(:toDate AS date))
+                    GROUP BY a.platform, d.account_id, d.breakdown_type, d.breakdown_value
+                ) per_account
+                GROUP BY platform, breakdown_type, breakdown_value
+                """.formatted(byAccount ? "AND d.account_id IN (:accountIds)" : "");
+        MapSqlParameterSource params = baseParams(clientId, from, to).addValue("platforms", platforms);
+        if (byAccount) {
+            params.addValue("accountIds", accountIds);
+        }
+        return jdbc.query(sql, params, (rs, n) -> new DemographicRow(
+                rs.getString("platform"), rs.getString("breakdown_type"), rs.getString("breakdown_value"),
+                rs.getBigDecimal("total")));
     }
 
     private static MapSqlParameterSource baseParams(Long clientId, LocalDate from, LocalDate to) {

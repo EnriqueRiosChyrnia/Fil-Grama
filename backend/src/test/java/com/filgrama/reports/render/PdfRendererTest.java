@@ -22,13 +22,27 @@ class PdfRendererTest {
         // Agrupación por tipo (como con como) y grilla de miniaturas.
         assertThat(html).contains("Reels").contains("Feed").contains("class=\"grid\"");
         assertThat(html).contains("class=\"thumb reel\"").contains("class=\"thumb feed\"");
-        // Estrella en destacadas + métrica sobre la imagen + fecha debajo.
-        assertThat(html).contains("★").contains("class=\"metric\"").contains("class=\"date\"");
+        // Badge "TOP" en destacadas (sin glifos fuera del cmap de Public Sans) + métrica sobre la imagen + fecha debajo.
+        assertThat(html).contains("class=\"star\">TOP<").contains("class=\"metric\"").contains("class=\"date\"");
         // Miniatura embebida en base64 (data-URI) y XML escapado (& -> &amp;).
         assertThat(html).contains("data:image/png;base64,");
         assertThat(html).contains("&amp;").doesNotContain("<con cariño>");
         // Sin narrativa → sin sección "Análisis del mes".
         assertThat(html).doesNotContain("Análisis del mes");
+        // Watch-time del reel sin glifo (fuera del cmap de Public Sans → tofu al renderizar).
+        assertThat(html).contains("13s promedio");
+        assertThat(html).doesNotContain("★").doesNotContain("⏱");
+    }
+
+    @Test
+    void usesFilGramaBrandNotMolinoReference() {
+        String html = renderer.buildHtml(RenderFixtures.extended());
+
+        // Marca Fil-Grama (paleta azul/gris de design/filgrama-colors.css) + Public Sans (fuente del front).
+        assertThat(html).contains("FIL").contains("GRAMA").contains("Public Sans").contains("#1E66BC");
+        // El reporte de Molino Don Alexis es sólo referencia de layout: nada de su amarillo ni sus fuentes.
+        assertThat(html).doesNotContain("#f7ae3a").doesNotContain("Gill Sans").doesNotContain("Palatino")
+                .doesNotContain("TeX Gyre Pagella");
     }
 
     @Test

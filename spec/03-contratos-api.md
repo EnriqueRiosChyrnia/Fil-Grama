@@ -268,13 +268,25 @@ Response (`200`) — `ReportData` serializado:
               "metrics": [ { "key": "ig_reach", "displayName": "Alcance", "unit": "count",
                              "value": 125400, "delta": 4200 } ],
               "engagementRate": 0.074, "followerGrowth": 180,
-              "reach": { "current": 125400, "previous": 121200, "deltaPct": 3.5 } } ],
+              "reach": { "current": 125400, "previous": 121200, "deltaPct": 3.5 },
+              "demographics": { "cities": [ { "label": "Encarnación", "value": 214, "pct": 0.27 } ],
+                                 "countries": [ { "label": "Paraguay", "value": 620, "pct": 0.79 } ],
+                                 "ageRanges": [ { "label": "25-34", "value": 360, "pct": 0.46 } ],
+                                 "genders": [ { "label": "Mujeres", "value": 530, "pct": 0.68 } ] },
+              "viewsFollowerSplit": { "followers": 3616, "nonFollowers": 1484,
+                                       "followerPct": 0.709, "nonFollowerPct": 0.291 },
+              "interactionsByAction": [ { "key": "ig_post_likes", "displayName": "Me gusta",
+                                           "unit": "count", "value": 72, "delta": null } ],
+              "viewsByContentType": [ { "displayType": "Reels", "views": 2958, "pct": 0.58 } ],
+              "profileActivity": { "profileViews": 363, "whatsappTaps": 8, "directionTaps": 2 } } ],
   // `delta` (y `reach.previous`/`reach.deltaPct`) son nullable: ver "Deltas sin baseline" abajo.
+  // Los 5 campos v1.1 (`demographics`…`profileActivity`) son nullable/vacíos si la red no trae el dato.
   "topPosts": [ { "id": 42, "platform": "INSTAGRAM", "postType": "REEL", "displayType": "Reels",
                   "publishedAt": "2026-05-20T13:00:00Z", "publishedAtLocal": "20 may 2026",
                   "permalink": "https://…", "caption": "…",
                   "thumbnailDataUri": "data:image/jpeg;base64,…", "thumbnailUrl": "https://…",
-                  "story": false, "metricKey": "ig_post_reach", "metricName": "Alcance", "metricValue": 42000 } ],
+                  "story": false, "metricKey": "ig_post_reach", "metricName": "Alcance", "metricValue": 42000,
+                  "watchTimeSeconds": 13 } ],
   "postGroups": [ { "platform": "INSTAGRAM", "displayType": "Reels", "posts": [ /* ReportPost[] */ ] } ],
   "storyGroups": [],
   "postHighlights": { "top": [ /* ReportPost[] */ ], "bottom": [ /* ReportPost[] */ ] },
@@ -293,6 +305,27 @@ cuenta recién conectada, sin historia previa), `delta` es **`null`** — NO el 
 con `reach.previous` y `reach.deltaPct` (`null` si no hay alcance previo). Se distingue "previo
 ausente" (`null` → el front muestra "—"/"sin comparación") de "previo = 0 real" (hay snapshot con
 valor 0 → `delta` es el valor completo, p. ej. de 0 a 150 ⇒ `delta = 150`). `value` siempre viene.
+
+**Bloques v1.1 del reporte mensual completo (research/06, spec/05 §v1.1).** Cada `PlatformKpis` suma,
+además de los KPIs de siempre, 5 campos nuevos — todos **nullable/vacíos** si la red o la cuenta no
+traen el dato (degradación elegante, no se inventa nada):
+- `demographics` — demografía de seguidores (tabla `audience_demographics`): `cities`/`countries`/
+  `ageRanges`/`genders`, cada uno una lista de `{label, value, pct}` (`pct` = ratio 0..1 sobre el total
+  de ESA dimensión, ordenado de mayor a menor). `null` si la cuenta no tiene demografía capturada.
+- `viewsFollowerSplit` — split seguidor/no-seguidor de las **visualizaciones** (`ig_views_followers`/
+  `ig_views_non_followers`). **El split de INTERACCIONES no existe** (research/06 §2): no hay campo
+  equivalente. `null` si la red no captura el breakdown.
+- `interactionsByAction` — `Kpi[]` con likes/comentarios/compartidos/guardados/reposts sumados de todos
+  los posts del período (keys `ig_post_*`); `delta` siempre `null` (sin comparación vs. período
+  anterior en v1). Vacío si la red no tiene acciones mapeadas (hoy sólo Instagram).
+- `viewsByContentType` — `[{displayType, views, pct}]`: visualizaciones agregadas por tipo de contenido
+  (Reels/Feed/Stories…), **derivado** agregando `post_metric_snapshots` por `posts.post_type` (no
+  depende de ningún breakdown del API). Vacío si la red no captura visualizaciones por post.
+- `profileActivity` — `{profileViews, whatsappTaps, directionTaps}`, cualquiera puede ser `null`
+  individualmente. El objeto entero es `null` si la red no tiene ninguna de las 3 keys en el catálogo.
+
+`ReportPost` suma `watchTimeSeconds` (tiempo medio de visionado, sólo reels, `ig_reels_avg_watch_time`
+en segundos): `null` si el post no es reel o no se capturó.
 
 ---
 
