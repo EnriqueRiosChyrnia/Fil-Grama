@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" fill="none">
+  <g stroke="#f7ae3a" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <!-- techo -->
+    <path d="M44,86 L114,44 L192,86"/>
+    <!-- alero -->
+    <path d="M44,86 L192,86"/>
+    <!-- pared izquierda -->
+    <path d="M66,86 L66,150"/>
+    <!-- pared derecha -->
+    <path d="M176,86 L176,120"/>
+    <!-- ventana -->
+    <rect x="90" y="104" width="26" height="26" rx="3"/>
+    <!-- canal / base de agua -->
+    <path d="M30,124 L48,124 C52,150 58,170 92,178 L150,180 C184,182 202,176 200,150"/>
+    <!-- aro exterior de la rueda -->
+    <circle cx="140" cy="150" r="44"/>
+    <!-- aro interior -->
+    <circle cx="140" cy="150" r="24"/>
+    <!-- cruz -->
+    <path d="M140,126 L140,174"/>
+    <path d="M116,150 L164,150"/>
+  </g>
+  <g fill="#f7ae3a">
+    <!-- dientes / paletas -->
+    <circle cx="192" cy="150" r="5.5"/>
+    <circle cx="185" cy="176" r="5.5"/>
+    <circle cx="166" cy="195" r="5.5"/>
+    <circle cx="140" cy="202" r="5.5"/>
+    <circle cx="114" cy="195" r="5.5"/>
+    <circle cx="95" cy="176" r="5.5"/>
+    <circle cx="88" cy="150" r="5.5"/>
+    <circle cx="95" cy="124" r="5.5"/>
+    <circle cx="114" cy="105" r="5.5"/>
+    <circle cx="166" cy="105" r="5.5"/>
+    <circle cx="185" cy="124" r="5.5"/>
+    <!-- eje central -->
+    <circle cx="140" cy="150" r="5"/>
+  </g>
+</svg>

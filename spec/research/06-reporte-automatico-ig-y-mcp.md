@@ -253,11 +253,11 @@ Anthropic con `ReportData`. Esto **sí cuesta** (tokens) y conviene solo para em
 
 ## 9. Validación sandbox (FG-T1, 30-jun-2026)
 
-> **Estado del spike: PENDIENTE.** La captura de datos v1.1 (track `tracks/FG-T1-captura-datos-v11.md`)
-> se implementó **sin** una cuenta de IG profesional conectada en Dev Mode, así que **ningún campo ⚠ se
-> validó contra la API real**. Se siguió el camino de respaldo del track: implementar B–D **gateado por
-> la detección de capacidades / catálogo**, capturando **solo si la respuesta de la API trae el campo**.
-> Cuando haya una cuenta conectada, correr el job y completar la tabla de abajo con "existe / no existe".
+> **Estado del spike: HECHO (1-jul-2026).** Se conectó una cuenta IG profesional real (@ohmy.bunny.py,
+> ~121-272 followers, cliente "Oh My Bunny" account_id=19) en Dev Mode y se corrió un sync. Resultados
+> validados contra la API real abajo. La captura v1.1 se implementó best-effort (solo persiste si la API
+> trae el campo), así que "no capturó" puede ser "Meta no lo dio" **o** "no se cableó la llamada" — ver
+> hallazgos.
 
 **Cómo quedó implementado (degradación elegante):**
 
@@ -276,20 +276,33 @@ Anthropic con `ReportData`. Esto **sí cuesta** (tokens) y conviene solo para em
 
 | Campo / breakdown | Esperado (doc jun-2026) | Resultado sandbox | Acción si NO existe |
 |---|---|---|---|
-| `follower_demographics` breakdown age/gender/city/country | [seguro] (≥100 followers) | _pendiente_ | bajar `ig_follower_demographics` a EXTENDED |
-| `views` breakdown `follow_type` | [probable] | _pendiente_ | bajar `ig_views_*` a EXTENDED |
-| `reach` breakdown `follow_type` | [probable] | _pendiente_ | ya es EXTENDED; dejar fuera |
-| `profile_views` (total_value del rango) | [probable] | _pendiente_ | plan B: sumar `profile_visits` de los media |
-| `profile_links_taps` breakdown `contact_button_type` | [probable] | _pendiente_ | usar acortador/UTM propio para WhatsApp |
-| media `reposts` | [probable] | _pendiente_ | quitar `ig_post_reposts` del set pedido |
-| media `profile_visits` | [probable] | _pendiente_ | dejar fuera |
-| media `ig_reels_avg_watch_time` (ms→s) | [seguro] (reels) | _pendiente_ | — |
+| `follower_demographics` breakdown age/gender/city/country | [seguro] (≥100 followers) | ✅ **CAPTURÓ** (city 23, age 7, country 4, gender 3 filas en `audience_demographics`) | — funciona |
+| media `reposts` | [probable] | ✅ **CAPTURÓ** (`ig_post_reposts`, 9 filas) | — funciona |
+| media `profile_visits` | [probable] | ✅ **CAPTURÓ** (`ig_post_profile_visits`, 9 filas) | — funciona |
+| `views` breakdown `follow_type` | [probable] | ❌ **NO capturó** (no hay `ig_views_followers/non_followers`) | investigar: ¿no cableado o Meta vacío? |
+| `profile_links_taps` breakdown `contact_button_type` | [probable] | ❌ **NO capturó** (no hay `ig_taps_*`) | idem; si Meta no lo da → acortador/UTM |
+| `follows_and_unfollows` | [seguro] (≥100) | ❌ **NO capturó** (no hay key en snapshots) | investigar cableado |
+| media `ig_reels_avg_watch_time` (ms→s) | [seguro] (reels) | ❌ **NO capturó** (no aparece; hay 1 reel) | investigar cableado reels |
+| `profile_views` (total_value del rango) | [probable] | ⚠️ capturó pero **valor 0** (ventana de 1 día) | ver hallazgo de ventana ↓ |
+| `reach` breakdown `follow_type` | [probable] | — no probado (EXTENDED) | dejar fuera por ahora |
 | split `follow_type` de `total_interactions` | [no probable] | **no implementado** | — |
 
-> Marcar lo confirmado-inexistente con `state` adecuado en una migración de seguimiento (el `CHECK` actual
-> de `metrics.state` admite `ACTIVE`/`DEPRECATED`/`MIGRATING`; si se quisiera un `UNAVAILABLE` explícito,
-> ampliar el `CHECK` y el enum `MetricState`). Hoy basta con mover el `tier` a EXTENDED para sacarlo de la
-> captura sin tocar código.
+**HALLAZGO CLAVE — insights de cuenta en 0 (no es bug):** las 6 métricas de cuenta CORE capturaron pero
+`reach`/`views`/`total_interactions`/`accounts_engaged`/`profile_views` dieron **0** (solo `followers_count`
+= 121 real). Causa: la captura pide el insight de cuenta de **un solo día** (30-jun) y la cuenta no tuvo
+actividad ese día → 0 legítimo. Las **publicaciones sí muestran valores** (son lifetime). El "5.100 views /
+1.784 reach" de la app de IG es el **total rodante de 30 días**. **A resolver:** (a) pedir `reach` como
+`time_series` de N días + `views`/`interactions`/etc. como `total_value` de ~30 días, y **backfillear los
+últimos ~30 días al conectar** para que el primer reporte muestre números; (b) el reporte suma snapshots
+del rango, así que con el job diario andando se llena solo con el tiempo.
+
+**HALLAZGO — v1.1 de cuenta no cableado:** demografía y post-level v1.1 (reposts, profile_visits)
+capturaron, pero los **de cuenta** (`follows_and_unfollows`, splits `views_followers/non_followers`, taps)
+**no generaron filas**. Falta ver si `MetaInsightsProvider.fetchAccountExtras` está cableado en el path del
+scan-al-conectar o si Meta devolvió vacío (revisar `raw_api_payloads` scope=ACCOUNT).
+
+> Marcar lo confirmado-inexistente con `state`/`tier` en una migración de seguimiento. Estos hallazgos son
+> el input del track de captura de la sesión de coding (ver `tracks/FG-PLAN-reporte-automatico.md`).
 
 ## Fuentes
 - [Instagram Account Insights — Meta for Developers](https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights/)

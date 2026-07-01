@@ -73,3 +73,69 @@ tenancy. Posible aislamiento por esquema/fila según volumen.
 
 → Regla aplicable **desde ya**: los `get_*` del MCP (capa 08) deben filtrar **siempre por el scope del
 token**, aunque hoy haya un solo tenant, para que sumar `organization_id` + multi-IA sea aditivo.
+
+## Adición v1.1 (futuro) — auto-publicación de contenido (v3, estilo Metricool)
+
+> Investigado 30-jun-2026. Idea para una **v3**: programar y auto-publicar contenido desde Fil-Grama
+> (como Metricool/Later). NO es v1/v2. Se deja anotado para no cerrar la puerta y para dimensionar el App Review.
+
+**Cómo lo hace Metricool (referencia) [seguro, doc oficial de Metricool]:**
+- Publica vía la **Instagram Content Publishing API** oficial: **feed, carruseles (hasta 10) y Reels**
+  (Reels ya con audio del catálogo autorizado por Meta) → 100% automático.
+- **Historias:** auto **solo en cuentas Business**; las **Creator** van por **notificación**.
+- **Fallback "notificación":** lo que la API no puede postear solo (Historias con **stickers
+  interactivos**, o **audio fuera del catálogo autorizado**) se resuelve con un **push al celular** que
+  descarga el media y abre Instagram para terminar a mano. Es el estándar (Later/Hootsuite igual).
+- **Límite:** 50 publicaciones / 24 h por cuenta (feed+reels+historias). Catálogo de música por API más
+  chico que el de la app. Stickers interactivos no soportados por API.
+
+**Qué implica para Fil-Grama v3:**
+- El **producto Instagram ya está agregado** a la app (use case "Manage messaging & content on Instagram"),
+  así que la superficie técnica está. Falta el permiso **`instagram_business_content_publish`** + su propio
+  **App Review** (con screencast del flujo de publicación).
+- **Decisión:** **NO** pedir el permiso de publicación en el App Review de v1/v2 (mantener la revisión
+  liviana, solo lectura/insights). Recién en v3, cuando se construya la función.
+- **Modelo de datos futuro:** tabla `scheduled_posts` (`client_id`, `account_id`, refs de media, `caption`,
+  `scheduled_at`, `status`, `publish_mode` = `AUTO` | `NOTIFICATION`) + worker que publica a la hora
+  (reusa el patrón del job: cola + idempotencia). Soportar el fallback notificación para Historias/stickers.
+- Encaja con el norte multi-tenant: cada publicación scopeada por `organization_id`/`client_id`/`account_id`.
+
+Fuentes: help.metricool.com (Schedule and Post on Instagram; Auto-publish Stories; Publish via notification);
+developers.facebook.com/docs/instagram-platform (Content Publishing).
+
+## Adición v1.1 (futuro) — archivar / eliminar cliente
+
+> Idea de Enrique (1-jul-2026, tras probar el onboarding real). Hoy `clients.status` ya contempla
+> `ARCHIVED` ([[02-modelo-de-datos]]) pero falta definir la semántica. Spec a acordar antes de codear.
+
+**Archivar** (soft, reversible): el cliente sale de las vistas activas/dashboards y **se pausa la captura**
+de sus cuentas (el job diario lo ignora, igual que una cuenta `DISCONNECTED`), pero **se conserva toda la
+historia** (snapshots, posts, reportes) para consultarla o reactivarlo. Útil cuando el cliente pausa el
+servicio o deja de pagar pero no querés perder los datos. Sus cuentas quedan en pausa (sin sincronizar) y
+sin borrar credenciales; se puede desarchivar y reanudar.
+
+**Eliminar** — dos opciones a decidir:
+- **Borrado lógico (recomendado):** `DELETED`, oculto en toda la UI, **revoca/borra credenciales** de sus
+  cuentas (como `REMOVED` a nivel cuenta) pero conserva la fila + historia por N meses (auditoría / posible
+  restauración) antes de purga física. Coherente con el soft-delete que ya usa el proyecto.
+- **Borrado físico:** cascada a cuentas/credenciales/snapshots/posts/reportes. Solo bajo pedido explícito
+  (derecho al olvido) + confirmación fuerte; irreversible.
+
+**Decisiones pendientes:** (1) archivar = pausa captura (recomendado) vs solo ocultar; (2) eliminación
+lógica con purga diferida vs física inmediata; (3) qué pasa con reportes ya generados de un cliente
+eliminado; (4) permisos (¿solo admin?). Relacionado: ciclo de vida de cuenta (`REMOVED`) en
+[[09-flujo-oauth]].
+
+## Adición v1.1 (futuro lejano) — bandeja de mensajería centralizada
+
+> Idea de Enrique (30-jun-2026): después de auto-publicación + calendario, sumar una **bandeja unificada**
+> de mensajes/comentarios (DMs y comentarios de IG/FB) dentro de Fil-Grama, para responder a los seguidores
+> de los clientes desde un solo lugar. Roadmap tentativo: **reportes (v1-2) → auto-publish + calendario (v3)
+> → mensajería centralizada (v4)**. NO es ahora.
+
+**Viabilidad técnica:** la base ya está encaminada — la app de Meta tiene los use cases de mensajería
+(`instagram_manage_messages`, `pages_messaging`) y comentarios (`instagram_manage_comments`,
+`pages_manage_engagement`) disponibles; los webhooks de Meta (`messages`, `comments`) empujan los eventos
+en tiempo real. Requeriría: permisos extra + su App Review, un servidor de webhooks (ya previsto para
+stories), modelo de conversaciones/mensajes, y respetar la **ventana de mensajería de 24 h** de Meta.
+Mismo principio de tenancy: todo scopeado por `organization_id`/`client_id`/`account_id`.

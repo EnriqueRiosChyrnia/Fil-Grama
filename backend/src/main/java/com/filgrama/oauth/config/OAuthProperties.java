@@ -37,7 +37,7 @@ public class OAuthProperties {
         private String graphUrl = "https://graph.facebook.com/v21.0";
         /** Facebook Login for Business (cubre FB Pages + IG profesional vía Page). spec/09 §Meta. */
         private List<String> scopes = List.of(
-                "pages_show_list", "pages_read_engagement", "read_insights",
+                "pages_show_list", "pages_read_engagement",
                 "instagram_basic", "instagram_manage_insights", "business_management");
     }
 

@@ -305,7 +305,7 @@ public class MetaOAuthProvider implements OAuthProvider {
         while (true) {
             attempt++;
             try {
-                String body = http.get().uri(urlSupplier.get()).retrieve().body(String.class);
+                String body = http.get().uri(java.net.URI.create(urlSupplier.get())).retrieve().body(String.class);
                 return OAuthHttpSupport.tree(body);
             } catch (RestClientResponseException e) {
                 HttpStatusCode status = e.getStatusCode();
@@ -315,7 +315,8 @@ public class MetaOAuthProvider implements OAuthProvider {
                 if (authIsRevoked && isAuthError(e)) {
                     throw new TokenRevokedException("Meta: autorización inválida o revocada");
                 }
-                throw new OAuthException("Meta respondió " + status.value() + " en el flujo OAuth");
+                throw new OAuthException("Meta respondió " + status.value() + " en el flujo OAuth: "
+                        + e.getResponseBodyAsString());
             } catch (ResourceAccessException e) {
                 if (attempt < 2) {
                     continue;

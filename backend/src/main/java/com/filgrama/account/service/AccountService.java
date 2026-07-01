@@ -46,6 +46,8 @@ import com.filgrama.repository.AccountCredentialRepository;
 import com.filgrama.repository.ClientRepository;
 import com.filgrama.repository.SocialAccountRepository;
 
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * Onboarding por OAuth y gestión de cuentas sociales. Canje server-side, guardado
  * cifrado de credenciales y nunca expone tokens.
@@ -53,6 +55,7 @@ import com.filgrama.repository.SocialAccountRepository;
  * <p>El {@code callback} resuelve a una URL de redirect (no problem+json), porque lo
  * consume el navegador del cliente; el resto lanza {@link ApiException} (RFC 7807).
  */
+@Slf4j
 @Service
 public class AccountService {
 
@@ -220,6 +223,7 @@ public class AccountService {
         } catch (TokenRevokedException e) {
             return errorRedirect("token_revoked", origin);
         } catch (OAuthException e) {
+            log.warn("OAuth exchange failed (meta): {}", e.getMessage(), e);
             return errorRedirect("exchange_failed", origin);
         }
 
@@ -549,6 +553,7 @@ public class AccountService {
     }
 
     private String errorRedirect(String errorCode) {
+        log.warn("OAuth callback -> error redirect: {}", errorCode);
         return UriComponentsBuilder.fromUriString(props.getFrontRedirectUrl())
                 .queryParam("error", errorCode)
                 .encode().toUriString();

@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Reporte Instagram — Molino Don Alexis — Junio 2026</title>
+<style>
+  @font-face{ font-family:'Gill Sans MT'; src:local('Gill Sans MT'),url('fonts/gill-sans-mt.ttf'); }
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  :root{
+    --amarillo:#f7ae3a;                  /* 100% */
+    --amarillo-claro:rgba(247,174,58,.2);/* 20%  */
+    --amarillo-suave:rgba(247,174,58,.1);/* 10%  */
+    --oscuro:#000000;                    /* negro puro: titulos/texto fuerte */
+    --carbon:rgba(0,0,0,.85);            /* cuerpo */
+    --secundario:rgba(247,174,58,.5);    /* 50%  */
+    --muted:rgba(0,0,0,.5);
+    --linea:rgba(0,0,0,.1);
+    --blanco:#ffffff;                    /* blanco puro */
+    --fondo:#ffffff;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  body{
+    font-family:"TeX Gyre Pagella","Palatino Linotype",Palatino,serif;
+    color:var(--carbon);
+    background:var(--fondo);
+    font-size:10.5pt;
+    line-height:1.5;
+  }
+  h1,h2,h3,h4,.font-head,.kpi-num,.donut-num,.tag{
+    font-family:"Gill Sans MT","Gill Sans MT","Gill Sans",sans-serif;
+  }
+  .page{
+    width:210mm; min-height:297mm;
+    padding:18mm 17mm 16mm 17mm;
+    position:relative;
+    page-break-after:always;
+    background:var(--fondo);
+  }
+  .page:last-child{ page-break-after:auto; }
+
+  /* ---------- PORTADA ---------- */
+  .cover{
+    padding:0;
+    background:var(--blanco);
+    color:#000;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  .cover-band{ height:16mm; background:var(--amarillo); }
+  .cover-inner{ flex:1; padding:30mm 22mm; display:flex; flex-direction:column; position:relative; z-index:1; }
+  .cover-logo{ width:98mm; margin-bottom:16mm; }
+  .cover .eyebrow{
+    font-family:"Gill Sans MT",sans-serif; letter-spacing:.32em; text-transform:uppercase;
+    font-size:11pt; color:#000; font-weight:700;
+  }
+  .cover h1{
+    font-size:46pt; line-height:1.02; font-weight:900; margin-top:14mm; color:#000;
+  }
+  .cover h1 .mark{ color:var(--amarillo); }
+  .cover .sub{ font-size:15pt; margin-top:8mm; color:var(--muted); font-family:"Gill Sans MT",sans-serif; font-weight:400;}
+  .cover .meta{ margin-top:auto; border-top:2px solid var(--amarillo); padding-top:7mm; }
+  .cover .meta-row{ display:flex; gap:18mm; }
+  .cover .meta-row + .meta-row{ margin-top:5mm; }
+  .cover .meta-label{ font-family:"Gill Sans MT",sans-serif; font-size:8.5pt; letter-spacing:.18em; text-transform:uppercase; color:var(--muted); }
+  .cover .meta-val{ font-size:12pt; color:#000; margin-top:1mm; }
+  .cover-foot{ height:10mm; background:var(--amarillo); }
+
+  /* ---------- ENCABEZADOS DE PÁGINA ---------- */
+  .phead{ display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:2.5px solid var(--amarillo); padding-bottom:3mm; margin-bottom:7mm; }
+  .phead h2{ font-size:20pt; font-weight:900; color:var(--oscuro); }
+  .phead .secnum{ font-family:"Gill Sans MT",sans-serif; font-weight:900; font-size:13pt; color:var(--amarillo); }
+  .lead{ color:var(--muted); font-size:10.5pt; margin-bottom:6mm; }
+  .footer{ position:absolute; bottom:8mm; left:17mm; right:17mm;
+    display:flex; justify-content:space-between; font-family:"Gill Sans MT",sans-serif;
+    font-size:7.5pt; color:var(--muted); letter-spacing:.04em; border-top:1px solid var(--linea); padding-top:2mm; }
+
+  /* ---------- KPIs ---------- */
+  .kpi-grid{ display:flex; gap:5mm; margin-bottom:9mm; }
+  .kpi{ flex:1; background:var(--blanco); border:1px solid var(--linea);
+    border-radius:5mm; padding:6mm 5mm; border-top:4px solid var(--amarillo); }
+  .kpi-label{ font-family:"Gill Sans MT",sans-serif; font-size:8pt; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .kpi-num{ font-size:27pt; font-weight:900; color:var(--oscuro); line-height:1; margin:3mm 0 1mm; }
+  .kpi-delta{ font-family:"Gill Sans MT",sans-serif; font-size:8.5pt; color:var(--muted); font-weight:700; }
+  .kpi-delta.flat{ color:var(--muted); }
+
+  /* ---------- CARDS / SECCIONES ---------- */
+  .card{ background:var(--blanco); border:1px solid var(--linea); border-radius:5mm; padding:6mm; margin-bottom:6mm; }
+  .card h3{ font-size:12.5pt; color:var(--oscuro); margin-bottom:4mm; font-weight:700; }
+  .two{ display:flex; gap:6mm; }
+  .two > *{ flex:1; }
+
+  /* ---------- DONUT ---------- */
+  .donut-wrap{ display:flex; align-items:center; gap:7mm; }
+  .donut{ width:38mm; height:38mm; flex:none; }
+  .donut-num{ font-size:15pt; font-weight:900; fill:var(--oscuro); }
+  .donut-cap{ font-size:5pt; fill:var(--muted); font-family:"Gill Sans MT",sans-serif; letter-spacing:.1em; }
+  .legend{ font-family:"Gill Sans MT",sans-serif; font-size:9pt; }
+  .legend .li{ display:flex; align-items:center; gap:3mm; margin-bottom:2.5mm; }
+  .legend .dot{ width:3.2mm; height:3.2mm; border-radius:50%; flex:none; }
+  .legend .val{ margin-left:auto; padding-left:5mm; font-weight:700; color:var(--oscuro); }
+
+  /* ---------- BARRAS ---------- */
+  .bars{ font-family:"Gill Sans MT",sans-serif; }
+  .bar-row{ margin-bottom:3.4mm; }
+  .bar-top{ display:flex; justify-content:space-between; font-size:9pt; margin-bottom:1.3mm; color:var(--carbon); }
+  .bar-top b{ color:var(--oscuro); }
+  .bar-track{ height:4mm; background:rgba(0,0,0,.07); border-radius:3mm; overflow:hidden; }
+  .bar-fill{ height:100%; border-radius:3mm; background:var(--amarillo); }
+  .bar-fill.sec{ background:var(--secundario); }
+  .bar-fill.dk{ background:var(--oscuro); }
+
+  /* ---------- TABLA INTERACCIONES ---------- */
+  .stat-row{ display:flex; justify-content:space-between; padding:2.6mm 0; border-bottom:1px solid var(--linea); font-family:"Gill Sans MT",sans-serif; font-size:10pt; }
+  .stat-row:last-child{ border-bottom:none; }
+  .stat-row .v{ font-weight:900; color:var(--oscuro); }
+
+  /* ---------- RANKING CONTENIDO ---------- */
+  .rank{ width:100%; border-collapse:collapse; font-family:"Gill Sans MT",sans-serif; }
+  .rank th{ text-align:left; font-size:8pt; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); padding:0 0 2.5mm; border-bottom:2px solid var(--amarillo); }
+  .rank th.r,.rank td.r{ text-align:right; }
+  .rank td{ padding:3mm 0; border-bottom:1px solid var(--linea); font-size:9.5pt; vertical-align:middle; }
+  .rank .pos{ font-weight:900; color:var(--amarillo); font-size:11pt; width:8mm; }
+  .rank .ttl{ font-weight:700; color:var(--oscuro); }
+  .rank .typ{ font-size:8pt; color:var(--muted); }
+  .rank .big{ font-weight:900; color:var(--oscuro); }
+  .pill{ display:inline-block; font-family:"Gill Sans MT",sans-serif; font-size:7pt; font-weight:700; letter-spacing:.06em;
+    padding:.6mm 2.2mm; border-radius:3mm; text-transform:uppercase; }
+  .pill.reel{ background:var(--amarillo); color:#000; }
+  .pill.pub{ background:var(--amarillo-claro); color:rgba(0,0,0,.7); }
+  .pill.his{ background:#fff; color:rgba(0,0,0,.6); border:1px solid var(--linea); }
+
+  /* ---------- ANÁLISIS ---------- */
+  .insight{ display:flex; gap:4mm; margin-bottom:4.5mm; }
+  .insight .ico{ width:8mm; height:8mm; flex:none; border-radius:50%; background:var(--amarillo);
+    color:var(--oscuro); font-family:"Gill Sans MT",sans-serif; font-weight:900; font-size:11pt;
+    display:flex; align-items:center; justify-content:center; }
+  .insight .tx h4{ font-size:11pt; color:var(--oscuro); margin-bottom:.8mm; }
+  .insight .tx p{ font-size:10pt; color:var(--carbon); }
+  .reco{ counter-reset:r; }
+  .reco .item{ background:var(--amarillo-suave); border-left:4px solid var(--amarillo); border-radius:0 3mm 3mm 0;
+    padding:4mm 5mm; margin-bottom:3.5mm; }
+  .reco .item h4{ font-family:"Gill Sans MT",sans-serif; font-size:10.5pt; color:var(--oscuro); margin-bottom:1mm; }
+  .reco .item p{ font-size:9.7pt; color:var(--carbon); }
+  .note{ font-size:8.5pt; color:var(--muted); font-style:italic; margin-top:3mm; }
+  .tag{ display:inline-block; background:var(--amarillo); color:var(--oscuro); font-weight:900;
+    font-size:7.5pt; letter-spacing:.1em; text-transform:uppercase; padding:1mm 3mm; border-radius:2mm; }
+
+  /* compactar página de análisis */
+  .tight .phead{ margin-bottom:5mm; }
+  .tight .card{ margin-bottom:4mm; padding:5mm; }
+  .tight .insight{ margin-bottom:2.6mm; }
+  .tight .reco .item{ padding:3mm 4.5mm; margin-bottom:2.3mm; }
+
+  /* fechas sugeridas */
+  .dcard{ display:flex; gap:5mm; align-items:flex-start; background:var(--amarillo-suave);
+    border-left:4px solid var(--amarillo); border-radius:0 4mm 4mm 0; padding:5mm; margin-bottom:5mm; }
+  .dchip{ flex:none; width:19mm; height:19mm; background:var(--amarillo); color:#000; border-radius:4mm;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family:'Gill Sans MT',sans-serif; line-height:1; }
+  .dchip .d{ font-size:19pt; font-weight:bold; }
+  .dchip.season .d{ font-size:13pt; }
+  .dchip .m{ font-size:7.5pt; letter-spacing:.12em; margin-top:1.4mm; }
+  .dtx h4{ font-family:'Gill Sans MT',sans-serif; font-size:12.5pt; color:var(--oscuro); margin-bottom:1.5mm; }
+  .dtx p{ font-size:10pt; color:var(--carbon); }
+</style>
+</head>
+<body>
+
+<!-- ============ PORTADA ============ -->
+<section class="page cover">
+  <div class="cover-band"></div>
+  <div class="cover-inner">
+    <img class="cover-logo" src="marca_horizontal.png" alt="Molino Don Alexis">
+    <div class="eyebrow">Reporte mensual de Instagram</div>
+    <h1>Desempeño de<br><span class="mark">Junio 2026</span></h1>
+    <div class="sub">Análisis de redes sociales · Panadería y Confitería</div>
+    <div class="meta">
+      <div class="meta-row">
+        <div><div class="meta-label">Período</div><div class="meta-val">1 – 30 de junio 2026</div></div>
+        <div><div class="meta-label">Red analizada</div><div class="meta-val">Instagram · @molinodonalexis</div></div>
+      </div>
+      <div class="meta-row">
+        <div><div class="meta-label">Contexto</div><div class="meta-val">Primer mes de la cuenta</div></div>
+        <div><div class="meta-label">Preparado por</div><div class="meta-val">Fil-Grama</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="cover-foot"></div>
+</section>
+
+<!-- ============ RESUMEN EJECUTIVO ============ -->
+<section class="page">
+  <div class="phead"><h2>Resumen del mes</h2><span class="secnum">01</span></div>
+  <p class="lead">Una vista rápida de los números que más importan en junio.</p>
+
+  <div class="kpi-grid">
+    <div class="kpi"><div class="kpi-label">Visualizaciones</div><div class="kpi-num">5.100</div><div class="kpi-delta">↑ en aumento</div></div>
+    <div class="kpi"><div class="kpi-label">Interacciones</div><div class="kpi-num">480</div><div class="kpi-delta">↑ en aumento</div></div>
+    <div class="kpi"><div class="kpi-label">Seguidores nuevos</div><div class="kpi-num">+136</div><div class="kpi-delta">138 altas · 2 bajas</div></div>
+    <div class="kpi"><div class="kpi-label">Cuentas alcanzadas</div><div class="kpi-num">1.784</div><div class="kpi-delta flat">personas distintas</div></div>
+  </div>
+
+  <div class="card">
+    <h3>En pocas palabras</h3>
+    <p>Junio fue el <b>primer mes de la cuenta</b> y arrancó con fuerza: el contenido alcanzó a <b>1.784 cuentas</b> y sumó <b>5.100 visualizaciones</b>, con <b>136 seguidores netos nuevos</b>. El motor del mes fueron los <b>Reels</b>, que concentraron el <b>58% de las vistas</b> y el <b>86,6% de todas las interacciones</b>. Las fechas especiales —<b>Día del Padre</b> y <b>San Juan</b>— y un <b>sorteo</b> de la selección impulsaron la conversación, con <b>290 comentarios</b> en el mes. La audiencia es marcadamente local (Encarnación e Itapúa) y mayormente femenina de 25 a 34 años, perfil muy coherente con la confitería.</p>
+  </div>
+
+  <div class="card">
+    <h3>De dónde vino la actividad</h3>
+    <div class="two">
+      <div>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(0,0,0,.07)" stroke-width="12"/>
+            <circle cx="60" cy="60" r="54" fill="none" stroke="#f7ae3a" stroke-width="12"
+              stroke-dasharray="240.6 98.7" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(247,174,58,.5)" stroke-width="12"
+              stroke-dasharray="98.7 240.6" stroke-dashoffset="-240.6" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+            <text x="60" y="58" text-anchor="middle" font-family="Gill Sans MT,sans-serif" font-weight="900" font-size="20" fill="#000">5.100</text>
+            <text x="60" y="72" text-anchor="middle" font-family="Gill Sans MT,sans-serif" font-size="7" letter-spacing="0.5" fill="rgba(0,0,0,.5)">VISUALIZACIONES</text>
+          </svg>
+          <div class="legend" style="flex:1">
+            <div class="li"><span class="dot" style="background:#f7ae3a"></span>Seguidores<span class="val">70,9%</span></div>
+            <div class="li"><span class="dot" style="background:rgba(247,174,58,.5)"></span>No seguidores<span class="val">29,1%</span></div>
+            <p class="note" style="margin-top:4mm">Casi 3 de cada 10 vistas vienen de gente que aún no te sigue: contenido que sale a descubrir.</p>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="donut-wrap">
+          <svg class="donut" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(0,0,0,.07)" stroke-width="12"/>
+            <circle cx="60" cy="60" r="54" fill="none" stroke="#f7ae3a" stroke-width="12"
+              stroke-dasharray="291.8 47.5" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+            <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(247,174,58,.5)" stroke-width="12"
+              stroke-dasharray="47.5 291.8" stroke-dashoffset="-291.8" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+            <text x="60" y="58" text-anchor="middle" font-family="Gill Sans MT,sans-serif" font-weight="900" font-size="20" fill="#000">480</text>
+            <text x="60" y="72" text-anchor="middle" font-family="Gill Sans MT,sans-serif" font-size="7" letter-spacing="0.5" fill="rgba(0,0,0,.5)">INTERACCIONES</text>
+          </svg>
+          <div class="legend" style="flex:1">
+            <div class="li"><span class="dot" style="background:#f7ae3a"></span>Seguidores<span class="val">86,0%</span></div>
+            <div class="li"><span class="dot" style="background:rgba(247,174,58,.5)"></span>No seguidores<span class="val">14,0%</span></div>
+            <p class="note" style="margin-top:4mm">La comunidad que ya te sigue es la que más interactúa: base fiel.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<!-- ============ ALCANCE Y CONTENIDO ============ -->
+<section class="page">
+  <div class="phead"><h2>Alcance y visualizaciones</h2><span class="secnum">02</span></div>
+  <p class="lead">Qué formato vio la gente y cuánto rindió cada uno.</p>
+
+  <div class="card">
+    <h3>Visualizaciones por tipo de contenido</h3>
+    <div class="bars">
+      <div class="bar-row"><div class="bar-top"><span>Reels</span><b>58,0%</b></div><div class="bar-track"><div class="bar-fill" style="width:58%"></div></div></div>
+      <div class="bar-row"><div class="bar-top"><span>Historias</span><b>30,1%</b></div><div class="bar-track"><div class="bar-fill" style="width:30.1%"></div></div></div>
+      <div class="bar-row"><div class="bar-top"><span>Publicaciones</span><b>11,9%</b></div><div class="bar-track"><div class="bar-fill" style="width:11.9%"></div></div></div>
+    </div>
+    <p class="note">Los Reels son, por lejos, el formato que más se ve. Las publicaciones del feed quedan en último lugar en visualizaciones.</p>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>Vistas entre seguidores</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>Reels</span><b>51,2%</b></div><div class="bar-track"><div class="bar-fill" style="width:51.2%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Historias</span><b>33,5%</b></div><div class="bar-track"><div class="bar-fill" style="width:33.5%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Publicaciones</span><b>15,3%</b></div><div class="bar-track"><div class="bar-fill" style="width:15.3%"></div></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Vistas entre no seguidores</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>Reels</span><b>74,4%</b></div><div class="bar-track"><div class="bar-fill sec" style="width:74.4%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Historias</span><b>21,8%</b></div><div class="bar-track"><div class="bar-fill sec" style="width:21.8%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Publicaciones</span><b>3,8%</b></div><div class="bar-track"><div class="bar-fill sec" style="width:3.8%"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Actividad en el perfil</h3>
+    <div class="bars">
+      <div class="stat-row"><span>Visitas al perfil</span><span class="v">363</span></div>
+      <div class="stat-row"><span>Clics al enlace de WhatsApp</span><span class="v">8</span></div>
+      <div class="stat-row"><span>Clics en la ubicación (Google Maps)</span><span class="v">2</span></div>
+    </div>
+    <p class="note">El enlace del perfil abre el chat de WhatsApp de la panadería y la dirección abre Google Maps. Con 363 visitas al perfil pero solo 8 clics a WhatsApp, hay margen para reforzar el llamado a la acción hacia el pedido.</p>
+  </div>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<!-- ============ INTERACCIONES Y SEGUIDORES ============ -->
+<section class="page">
+  <div class="phead"><h2>Interacciones y comunidad</h2><span class="secnum">03</span></div>
+  <p class="lead">Cómo respondió la gente y cómo creció la comunidad.</p>
+
+  <div class="two">
+    <div class="card">
+      <h3>Interacciones por tipo de acción</h3>
+      <div class="stat-row"><span>Comentarios</span><span class="v">290</span></div>
+      <div class="stat-row"><span>Me gusta</span><span class="v">72</span></div>
+      <div class="stat-row"><span>Veces que se compartió</span><span class="v">22</span></div>
+      <div class="stat-row"><span>Reposts</span><span class="v">12</span></div>
+      <div class="stat-row"><span>Veces que se guardó</span><span class="v">1</span></div>
+      <p class="note">Los comentarios superan por mucho a los “me gusta”, impulsados por el sorteo de la selección que pedía participar comentando.</p>
+    </div>
+    <div class="card">
+      <h3>De dónde salen las interacciones</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>Reels</span><b>86,6%</b></div><div class="bar-track"><div class="bar-fill" style="width:86.6%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Historias</span><b>9,1%</b></div><div class="bar-track"><div class="bar-fill" style="width:9.1%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Publicaciones</span><b>4,2%</b></div><div class="bar-track"><div class="bar-fill" style="width:4.2%"></div></div></div>
+      </div>
+      <p class="note">Prácticamente toda la interacción del mes ocurrió en Reels. El feed tradicional aporta muy poco.</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Crecimiento de seguidores</h3>
+    <div class="kpi-grid" style="margin-bottom:0">
+      <div class="kpi"><div class="kpi-label">Nuevos seguidores</div><div class="kpi-num">138</div><div class="kpi-delta">empezaron a seguirte</div></div>
+      <div class="kpi"><div class="kpi-label">Dejaron de seguir</div><div class="kpi-num">2</div><div class="kpi-delta flat">bajas</div></div>
+      <div class="kpi"><div class="kpi-label">Crecimiento neto</div><div class="kpi-num">+136</div><div class="kpi-delta">balance del mes</div></div>
+    </div>
+    <p class="note">Las altas se concentraron en los primeros días del mes y se mantuvieron de forma constante. Una retención altísima: por cada baja entraron 69 seguidores nuevos.</p>
+  </div>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<!-- ============ PÚBLICO ============ -->
+<section class="page">
+  <div class="phead"><h2>Tu público</h2><span class="secnum">04</span></div>
+  <p class="lead">Quién está del otro lado de la pantalla.</p>
+
+  <div class="two">
+    <div class="card">
+      <h3>Principales ciudades</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>Encarnación</span><b>27,0%</b></div><div class="bar-track"><div class="bar-fill" style="width:54%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Colonia Capitán Miranda (Itapúa)</span><b>12,2%</b></div><div class="bar-track"><div class="bar-fill" style="width:24.4%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Nueva Alborada</span><b>11,1%</b></div><div class="bar-track"><div class="bar-fill" style="width:22.2%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Capitán Miranda</span><b>10,5%</b></div><div class="bar-track"><div class="bar-fill" style="width:21%"></div></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Principales países</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>Paraguay</span><b>79,3%</b></div><div class="bar-track"><div class="bar-fill" style="width:79.3%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Argentina</span><b>11,5%</b></div><div class="bar-track"><div class="bar-fill" style="width:11.5%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>España</span><b>1,7%</b></div><div class="bar-track"><div class="bar-fill" style="width:1.7%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>Chile</span><b>1,3%</b></div><div class="bar-track"><div class="bar-fill" style="width:1.3%"></div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>Rangos de edad</h3>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-top"><span>25 – 34</span><b>46,0%</b></div><div class="bar-track"><div class="bar-fill" style="width:92%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>18 – 24</span><b>27,9%</b></div><div class="bar-track"><div class="bar-fill" style="width:55.8%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>35 – 44</span><b>16,8%</b></div><div class="bar-track"><div class="bar-fill" style="width:33.6%"></div></div></div>
+        <div class="bar-row"><div class="bar-top"><span>45 – 54</span><b>5,9%</b></div><div class="bar-track"><div class="bar-fill" style="width:11.8%"></div></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Sexo</h3>
+      <div class="donut-wrap">
+        <svg class="donut" viewBox="0 0 120 120">
+          <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(0,0,0,.07)" stroke-width="12"/>
+          <circle cx="60" cy="60" r="54" fill="none" stroke="#f7ae3a" stroke-width="12"
+            stroke-dasharray="230.1 109.2" stroke-dashoffset="0" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+          <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(247,174,58,.5)" stroke-width="12"
+            stroke-dasharray="109.2 230.1" stroke-dashoffset="-230.1" transform="rotate(-90 60 60)" stroke-linecap="round"/>
+        </svg>
+        <div class="legend" style="flex:1">
+          <div class="li"><span class="dot" style="background:#f7ae3a"></span>Mujeres<span class="val">67,8%</span></div>
+          <div class="li"><span class="dot" style="background:rgba(247,174,58,.5)"></span>Hombres<span class="val">32,2%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="background:var(--amarillo-suave); border-color:var(--amarillo-claro)">
+    <h3>Lectura del público</h3>
+    <p>El perfil es <b>muy local</b>: 4 de cada 5 seguidores están en Paraguay y la mayoría en Encarnación e Itapúa, justo la zona de influencia del negocio. Predomina la <b>mujer de 25 a 34 años</b>, decisora típica de compra en panadería y confitería. La comunicación, las promociones y los horarios deberían pensarse para ese público.</p>
+  </div>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<!-- ============ TOP CONTENIDO ============ -->
+<section class="page">
+  <div class="phead"><h2>Contenido destacado</h2><span class="secnum">05</span></div>
+  <p class="lead">Las piezas que más se vieron en el mes.</p>
+
+  <div class="card">
+    <table class="rank">
+      <thead><tr><th>#</th><th>Contenido</th><th>Formato</th><th class="r">Vistas</th><th class="r">Alcance</th></tr></thead>
+      <tbody>
+        <tr><td class="pos">1</td><td class="ttl">“Feliz Día” — Día del Padre</td><td><span class="pill reel">Reel</span></td><td class="r big">672</td><td class="r">221</td></tr>
+        <tr><td class="pos">2</td><td class="ttl">Endulza tu día — meriendas</td><td><span class="pill pub">Publicación</span></td><td class="r big">193</td><td class="r">76</td></tr>
+        <tr><td class="pos">3</td><td class="ttl">Regalo para papá — torta</td><td><span class="pill pub">Publicación</span></td><td class="r big">179</td><td class="r">68</td></tr>
+        <tr><td class="pos">4</td><td class="ttl">San Juan dice que sí</td><td><span class="pill pub">Publicación</span></td><td class="r big">125</td><td class="r">44</td></tr>
+        <tr><td class="pos">5</td><td class="ttl">Historia ganadoras / canasta San Juan</td><td><span class="pill his">Historia</span></td><td class="r big">124</td><td class="r">—</td></tr>
+        <tr><td class="pos">6</td><td class="ttl">Piononos</td><td><span class="pill pub">Publicación</span></td><td class="r big">113</td><td class="r">42</td></tr>
+        <tr><td class="pos">7</td><td class="ttl">Sorteo Albirroja — remera</td><td><span class="pill his">Historia</span></td><td class="r big">84</td><td class="r">—</td></tr>
+        <tr><td class="pos">8</td><td class="ttl">Marmolada</td><td><span class="pill pub">Publicación</span></td><td class="r big">52</td><td class="r">—</td></tr>
+      </tbody>
+    </table>
+    <p class="note">Las historias muestran “vistas” en lugar de alcance. El reel del Día del Padre concentró por sí solo el 13% de todas las visualizaciones del mes.</p>
+  </div>
+
+  <div class="card" style="background:var(--amarillo); border:none">
+    <h3 style="color:#000">El gran ganador del mes</h3>
+    <p style="color:#000">El Reel <b>“Feliz Día”</b> (Día del Padre, 17 jun) hizo <b>672 visualizaciones</b>, llegó a <b>221 cuentas</b> y tuvo <b>16 me gusta</b>, con un tiempo de visualización promedio de 13 segundos. Combinó <b>producto + fecha emotiva + formato video</b>: la fórmula que mejor funcionó en junio.</p>
+  </div>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<!-- ============ ANÁLISIS Y RECOMENDACIONES ============ -->
+<section class="page tight">
+  <div class="phead"><h2>Análisis y plan para julio</h2><span class="secnum">06</span></div>
+
+  <div class="card">
+    <h3>Lo que aprendimos en junio</h3>
+    <div class="insight"><div class="ico">✓</div><div class="tx"><h4>Los Reels son el motor</h4><p>58% de las vistas y 86,6% de las interacciones. También son la principal puerta de entrada de gente nueva (74% de las vistas de no seguidores).</p></div></div>
+    <div class="insight"><div class="ico">✓</div><div class="tx"><h4>Las fechas especiales rinden</h4><p>El Día del Padre y San Juan generaron el contenido más visto del mes. El calendario local es una oportunidad clara.</p></div></div>
+    <div class="insight"><div class="ico">✓</div><div class="tx"><h4>Reels y feed cumplen roles distintos</h4><p>Los Reels traen el alcance y la interacción (87% del total), mientras que las publicaciones del feed construyen la imagen y la coherencia del perfil: lo que ve —y valora— quien entra a decidir si seguir o comprar. Se complementan.</p></div></div>
+    <div class="insight"><div class="ico">!</div><div class="tx"><h4>Pocos clics a WhatsApp</h4><p>363 visitas al perfil pero solo 8 clics al enlace de WhatsApp: hay un llamado a la acción por reforzar para convertir esas visitas en pedidos.</p></div></div>
+  </div>
+
+  <div class="card reco">
+    <h3>Recomendaciones para julio</h3>
+    <div class="item"><h4>1 · Reels para alcance, feed para imagen</h4><p>Potenciar los Reels —son los que traen vistas y seguidores nuevos— manteniendo a la vez un feed cuidado y armonioso, que es lo que da una buena primera impresión a quien visita el perfil. Ambos formatos cumplen su función.</p></div>
+    <div class="item"><h4>2 · Aprovechar el calendario de julio</h4><p>Las fechas especiales rindieron muy bien en junio (San Juan, Día del Padre). Julio trae varias oportunidades para repetir la fórmula producto + fecha: las detallamos al final del reporte.</p></div>
+    <div class="item"><h4>3 · Reforzar el llamado a la acción</h4><p>Sumar el sticker de enlace a WhatsApp en historias y un CTA claro hacia el pedido por WhatsApp en los Reels, para convertir las 363 visitas al perfil en consultas.</p></div>
+    <div class="item"><h4>4 · Equilibrar sorteos con contenido de valor</h4><p>Los sorteos atraen seguidores rápido, pero no siempre se quedan. Acompañarlos con contenido que muestre el producto, recetas o el detrás de escena ayuda a que esa comunidad nueva se enganche y permanezca.</p></div>
+  </div>
+
+  <p class="note">Período analizado: junio 2026. Datos del perfil profesional de Instagram. Algunas lecturas sobre el origen de los comentarios son interpretaciones del equipo a partir de los datos disponibles.</p>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+<section class="page">
+  <div class="phead"><h2>Fechas sugeridas para julio</h2><span class="secnum">07</span></div>
+  <p class="lead">Ideas de contenido alineadas al calendario, para repetir la fórmula que funcionó en junio: producto + fecha.</p>
+
+  <div class="datelist">
+    <div class="dcard">
+      <div class="dchip"><span class="d">7</span><span class="m">JUL</span></div>
+      <div class="dtx"><h4>Día Mundial del Chocolate</h4><p>Ideal para lucir tortas, postres y todo lo que lleva chocolate. Un flyer de producto en primer plano es la apuesta natural del mes.</p></div>
+    </div>
+    <div class="dcard">
+      <div class="dchip season"><span class="d">JUL</span><span class="m">mediados</span></div>
+      <div class="dtx"><h4>Vacaciones de invierno</h4><p>Frío y chicos en casa durante varias semanas: chocolate caliente, churros, facturas y meriendas. Contenido cálido y de temporada.</p></div>
+    </div>
+    <div class="dcard">
+      <div class="dchip"><span class="d">26</span><span class="m">JUL</span></div>
+      <div class="dtx"><h4>Día de los Abuelos</h4><p>Se celebra en honor a Santa Ana y San Joaquín —los padres de la Virgen María y abuelos de Jesús—, reconocidos como patronos de los abuelos. Ángulo emotivo: una merienda o un dulce para compartir con ellos.</p></div>
+    </div>
+    <div class="dcard">
+      <div class="dchip"><span class="d">30</span><span class="m">JUL</span></div>
+      <div class="dtx"><h4>Día del Amigo</h4><p>La fecha más fuerte del mes en Paraguay. Juntadas y meriendas entre amigos: combos y cajas para compartir, ideales para una promo.</p></div>
+    </div>
+  </div>
+
+  <p class="note">Sugerencias de Fil-Grama según el calendario; combinables con los productos de temporada de Molino Don Alexis.</p>
+
+  <div class="footer"><span>Molino Don Alexis · Reporte de Instagram</span><span>Junio 2026</span></div>
+</section>
+
+</body>
+</html>
