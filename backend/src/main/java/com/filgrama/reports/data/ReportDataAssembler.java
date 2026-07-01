@@ -15,31 +15,40 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.filgrama.domain.Client;
+import com.filgrama.domain.Metric;
 import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.error.ApiException;
 import com.filgrama.metrics.dto.PlatformSummary;
 import com.filgrama.metrics.dto.SummaryMetric;
 import com.filgrama.metrics.dto.SummaryResponse;
+import com.filgrama.metrics.service.MetricCatalogService;
 import com.filgrama.metrics.service.SummaryService;
 import com.filgrama.reports.ReportFormat;
 import com.filgrama.reports.ReportQueryRepository;
+import com.filgrama.reports.ReportQueryRepository.DemographicRow;
 import com.filgrama.reports.ReportQueryRepository.PlatformMetricKey;
 import com.filgrama.reports.ReportQueryRepository.PostMetricValue;
 import com.filgrama.reports.ReportQueryRepository.PostRow;
 import com.filgrama.reports.ReportType;
+import com.filgrama.reports.data.ReportData.ContentTypeShare;
+import com.filgrama.reports.data.ReportData.Demographics;
 import com.filgrama.reports.data.ReportData.Highlights;
 import com.filgrama.reports.data.ReportData.Kpi;
 import com.filgrama.reports.data.ReportData.Period;
 import com.filgrama.reports.data.ReportData.PlatformKpis;
 import com.filgrama.reports.data.ReportData.PostGroup;
+import com.filgrama.reports.data.ReportData.ProfileActivity;
 import com.filgrama.reports.data.ReportData.ReachEvolution;
 import com.filgrama.reports.data.ReportData.ReportPost;
+import com.filgrama.reports.data.ReportData.Segment;
+import com.filgrama.reports.data.ReportData.ViewsFollowerSplit;
 import com.filgrama.reports.render.ThumbnailLoader;
 import com.filgrama.reports.render.ThumbnailLoader.Thumbnail;
 import com.filgrama.repository.ClientRepository;
@@ -68,25 +77,53 @@ public class ReportDataAssembler {
     /** Orden de las secciones por tipo dentro de una red. */
     private static final List<String> TYPE_ORDER = List.of("Reels", "Feed", "Videos", "Stories", "Otros");
 
+    // ---- v1.1: reporte mensual completo de Instagram (research/06, spec/05 §v1.1) ----
+
+    /** Keys del split seguidor/no-seguidor de VISUALIZACIONES por red (el de interacciones no existe). */
+    private static final Map<String, String[]> VIEWS_SPLIT_KEYS = Map.of(
+            "INSTAGRAM", new String[] {"ig_views_followers", "ig_views_non_followers"});
+
+    /** Keys de actividad de perfil (visitas, taps) por red: {profileViews, whatsappTaps, directionTaps}. */
+    private static final Map<String, String[]> PROFILE_ACTIVITY_KEYS = Map.of(
+            "INSTAGRAM", new String[] {"ig_profile_views", "ig_taps_whatsapp", "ig_taps_direction"});
+
+    /** Keys POST de interacciones "por acción" (likes/comentarios/compartidos/guardados/reposts) por red. */
+    private static final Map<String, List<String>> INTERACTION_ACTION_KEYS = Map.of(
+            "INSTAGRAM", List.of("ig_post_likes", "ig_post_comments", "ig_post_shares",
+                    "ig_post_saved", "ig_post_reposts"));
+
+    /** Key POST de "visualizaciones" usada para el desglose por tipo de contenido, por red. */
+    private static final Map<String, String> POST_VIEWS_KEY = Map.of(
+            "INSTAGRAM", "ig_post_views",
+            "FACEBOOK", "fb_post_views",
+            "TIKTOK", "tt_view_count");
+
+    /** Key POST de tiempo medio de visionado (reels), por red. */
+    private static final Map<String, String> WATCH_TIME_KEY = Map.of(
+            "INSTAGRAM", "ig_reels_avg_watch_time");
+
     private final ClientRepository clientRepository;
     private final SocialAccountRepository accountRepository;
     private final SummaryService summaryService;
     private final ReportQueryRepository reportQuery;
     private final RankMetricResolver rankResolver;
     private final ThumbnailLoader thumbnailLoader;
+    private final MetricCatalogService catalog;
 
     public ReportDataAssembler(ClientRepository clientRepository,
                                SocialAccountRepository accountRepository,
                                SummaryService summaryService,
                                ReportQueryRepository reportQuery,
                                RankMetricResolver rankResolver,
-                               ThumbnailLoader thumbnailLoader) {
+                               ThumbnailLoader thumbnailLoader,
+                               MetricCatalogService catalog) {
         this.clientRepository = clientRepository;
         this.accountRepository = accountRepository;
         this.summaryService = summaryService;
         this.reportQuery = reportQuery;
         this.rankResolver = rankResolver;
         this.thumbnailLoader = thumbnailLoader;
+        this.catalog = catalog;
     }
 
     @Transactional(readOnly = true)
@@ -113,14 +150,21 @@ public class ReportDataAssembler {
         // Qué métricas tienen baseline real en el período anterior (distingue "previo ausente" de "previo = 0").
         Set<PlatformMetricKey> prevBaseline = reportQuery.accountMetricKeysPresent(
                 clientId, platforms, accountIds, period.previousFrom(), period.previousTo());
-        List<PlatformKpis> kpis = buildKpis(platforms, current, previous, prevBaseline);
+        List<PlatformKpis> baseKpis = buildKpis(platforms, current, previous, prevBaseline);
 
-        // ---- Posts del cliente en el período (query propia de reporte) ----
+        // ---- Posts del cliente en el período (query propia de reporte) — se cargan ANTES de cerrar los
+        // KPIs porque alimentan los bloques v1.1 derivados (interacciones por acción, visualizaciones por
+        // tipo de contenido; research/06 §3). ----
         List<PostRow> rows = reportQuery.findPosts(clientId, from, to, platforms, accountIds);
         Map<Long, Map<String, BigDecimal>> metricsByPost = loadPostMetrics(clientId, rows, from, to);
         List<ReportPost> posts = rows.stream()
                 .map(r -> toBarePost(r, zone, normalizedRankBy, metricsByPost))
                 .toList();
+
+        // ---- Demografía de seguidores (v1.1, tabla audience_demographics; research/06 §3) ----
+        List<DemographicRow> demographicRows = reportQuery.findDemographics(clientId, platforms, accountIds, from, to);
+
+        List<PlatformKpis> kpis = enrichKpis(baseKpis, rows, metricsByPost, demographicRows);
 
         if (type == ReportType.SUMMARY) {
             List<ReportPost> top = enrich(topBy(posts.stream().filter(p -> !p.story()).toList(), true, TOP_N));
@@ -154,7 +198,8 @@ public class ReportDataAssembler {
             PlatformSummary cur = currByPlatform.get(platform);
             if (cur == null) {
                 // Red sin datos en el período: igual se lista (desglose por red), con KPIs vacíos.
-                result.add(new PlatformKpis(platform, List.of(), null, null, null));
+                result.add(new PlatformKpis(platform, List.of(), null, null, null,
+                        null, null, List.of(), List.of(), null));
                 continue;
             }
             PlatformSummary prev = prevByPlatform.get(platform);
@@ -170,9 +215,213 @@ public class ReportDataAssembler {
                 kpiList.add(new Kpi(m.metric(), m.displayName(), m.unit(), value, delta));
             }
             ReachEvolution reach = reachEvolution(platform, cur, prev, prevBaseline);
-            result.add(new PlatformKpis(platform, kpiList, cur.engagementRate(), cur.followerGrowth(), reach));
+            // Los bloques v1.1 (demografía, split, interacciones por acción, tipo de contenido, actividad
+            // de perfil) se completan después en enrichKpis: acá dejamos placeholders vacíos/nulos.
+            result.add(new PlatformKpis(platform, kpiList, cur.engagementRate(), cur.followerGrowth(), reach,
+                    null, null, List.of(), List.of(), null));
         }
         return result;
+    }
+
+    // ============================ v1.1: bloques del reporte mensual completo ============================
+
+    /**
+     * Completa cada {@link PlatformKpis} con los bloques v1.1 del reporte (research/06 §3, spec/05
+     * §v1.1): demografía, split seguidor/no-seguidor de visualizaciones y actividad de perfil (extraídos
+     * de los KPIs ACCOUNT ya armados), más interacciones por acción y visualizaciones por tipo de
+     * contenido (derivados de los posts del período). Todo nullable/vacío si la red no lo trae.
+     */
+    private List<PlatformKpis> enrichKpis(List<PlatformKpis> base, List<PostRow> rows,
+                                          Map<Long, Map<String, BigDecimal>> metricsByPost,
+                                          List<DemographicRow> demographicRows) {
+        Map<String, List<DemographicRow>> demographicsByPlatform = demographicRows.stream()
+                .collect(Collectors.groupingBy(DemographicRow::platform));
+        List<PlatformKpis> result = new ArrayList<>();
+        for (PlatformKpis pk : base) {
+            String platform = pk.platform();
+            Demographics demographics = demographics(demographicsByPlatform.get(platform));
+            ViewsFollowerSplit split = viewsFollowerSplit(platform, pk.metrics());
+            ProfileActivity activity = profileActivity(platform, pk.metrics());
+            List<Kpi> interactions = interactionsByAction(platform, rows, metricsByPost);
+            List<ContentTypeShare> contentTypeViews = viewsByContentType(platform, rows, metricsByPost);
+            result.add(new PlatformKpis(platform, pk.metrics(), pk.engagementRate(), pk.followerGrowth(),
+                    pk.reach(), demographics, split, interactions, contentTypeViews, activity));
+        }
+        return result;
+    }
+
+    /** Extrae el par (followers/nonFollowers) de {@code metrics} ya armado; null si la red no lo trae. */
+    private static ViewsFollowerSplit viewsFollowerSplit(String platform, List<Kpi> metrics) {
+        String[] keys = VIEWS_SPLIT_KEYS.get(platform);
+        if (keys == null) {
+            return null;
+        }
+        BigDecimal followers = kpiValueByKey(metrics, keys[0]);
+        BigDecimal nonFollowers = kpiValueByKey(metrics, keys[1]);
+        if (followers == null || nonFollowers == null) {
+            return null;
+        }
+        BigDecimal total = followers.add(nonFollowers);
+        BigDecimal followerPct = pct(followers, total);
+        BigDecimal nonFollowerPct = pct(nonFollowers, total);
+        return new ViewsFollowerSplit(clean(followers), clean(nonFollowers), followerPct, nonFollowerPct);
+    }
+
+    /** Extrae visitas al perfil + taps de {@code metrics} ya armado; null si la red no lo trae. */
+    private static ProfileActivity profileActivity(String platform, List<Kpi> metrics) {
+        String[] keys = PROFILE_ACTIVITY_KEYS.get(platform);
+        if (keys == null) {
+            return null;
+        }
+        BigDecimal views = kpiValueByKey(metrics, keys[0]);
+        BigDecimal whatsapp = kpiValueByKey(metrics, keys[1]);
+        BigDecimal direction = kpiValueByKey(metrics, keys[2]);
+        if (views == null && whatsapp == null && direction == null) {
+            return null;
+        }
+        return new ProfileActivity(views, whatsapp, direction);
+    }
+
+    private static BigDecimal kpiValueByKey(List<Kpi> metrics, String key) {
+        return metrics.stream().filter(k -> k.key().equals(key)).map(Kpi::value).findFirst().orElse(null);
+    }
+
+    /**
+     * Suma, por acción (likes/comentarios/compartidos/guardados/reposts), el valor de todos los posts
+     * de la red en el período (keys {@code ig_post_*}; research/06 §1/§3). Vacía si la red no tiene
+     * acciones mapeadas ({@link #INTERACTION_ACTION_KEYS}).
+     */
+    private List<Kpi> interactionsByAction(String platform, List<PostRow> rows,
+                                           Map<Long, Map<String, BigDecimal>> metricsByPost) {
+        List<String> keys = INTERACTION_ACTION_KEYS.get(platform);
+        if (keys == null) {
+            return List.of();
+        }
+        Map<String, BigDecimal> totals = new LinkedHashMap<>();
+        for (String key : keys) {
+            totals.put(key, BigDecimal.ZERO);
+        }
+        for (PostRow r : rows) {
+            if (!platform.equals(r.platform())) {
+                continue;
+            }
+            Map<String, BigDecimal> vals = metricsByPost.get(r.id());
+            if (vals == null) {
+                continue;
+            }
+            for (String key : keys) {
+                BigDecimal v = vals.get(key);
+                if (v != null) {
+                    totals.merge(key, v, BigDecimal::add);
+                }
+            }
+        }
+        List<Kpi> out = new ArrayList<>();
+        for (String key : keys) {
+            Metric m = catalog.find(key).orElse(null);
+            String displayName = m != null ? m.getDisplayName() : key;
+            String unit = m != null ? m.getUnit() : "count";
+            out.add(new Kpi(key, displayName, unit, clean(totals.get(key)), null));
+        }
+        return out;
+    }
+
+    /**
+     * Agrega las visualizaciones de los posts del período por {@code displayType} (Reels/Feed/Stories…),
+     * sumando {@link #POST_VIEWS_KEY} de la red — camino seguro que no depende de un breakdown del API
+     * (research/06 §3.5). Vacía si la red no tiene key de visualizaciones por post o no hay datos.
+     */
+    private List<ContentTypeShare> viewsByContentType(String platform, List<PostRow> rows,
+                                                       Map<Long, Map<String, BigDecimal>> metricsByPost) {
+        String viewsKey = POST_VIEWS_KEY.get(platform);
+        if (viewsKey == null) {
+            return List.of();
+        }
+        Map<String, BigDecimal> totals = new LinkedHashMap<>();
+        for (PostRow r : rows) {
+            if (!platform.equals(r.platform())) {
+                continue;
+            }
+            Map<String, BigDecimal> vals = metricsByPost.get(r.id());
+            BigDecimal v = vals == null ? null : vals.get(viewsKey);
+            if (v == null) {
+                continue;
+            }
+            boolean story = r.ephemeral() || "STORY".equals(r.postType());
+            totals.merge(displayType(r.postType(), story), v, BigDecimal::add);
+        }
+        BigDecimal grandTotal = totals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (grandTotal.signum() == 0) {
+            return List.of();
+        }
+        return totals.entrySet().stream()
+                .map(e -> new ContentTypeShare(e.getKey(), clean(e.getValue()), pct(e.getValue(), grandTotal)))
+                .sorted(Comparator.comparing(ContentTypeShare::views).reversed())
+                .toList();
+    }
+
+    /** Demografía de una red a partir de las filas agregadas (research/06 §3.1); null si no hay ninguna. */
+    private static Demographics demographics(List<DemographicRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return null;
+        }
+        Map<String, List<DemographicRow>> byType = rows.stream()
+                .collect(Collectors.groupingBy(DemographicRow::breakdownType));
+        Demographics demographics = new Demographics(
+                segments(byType.get("CITY")), segments(byType.get("COUNTRY")),
+                segments(byType.get("AGE")), segments(byType.get("GENDER")));
+        return demographics.isEmpty() ? null : demographics;
+    }
+
+    private static List<Segment> segments(List<DemographicRow> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+        BigDecimal total = rows.stream().map(DemographicRow::value).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return rows.stream()
+                .sorted(Comparator.comparing(DemographicRow::value).reversed())
+                .map(r -> new Segment(demographicLabel(r.breakdownType(), r.breakdownValue()),
+                        clean(r.value()), pct(r.value(), total)))
+                .toList();
+    }
+
+    /** Traduce el valor crudo del breakdown de Meta a una etiqueta legible en español. */
+    private static String demographicLabel(String breakdownType, String raw) {
+        if (raw == null) {
+            return "";
+        }
+        return switch (breakdownType) {
+            case "GENDER" -> switch (raw.toUpperCase(Locale.ROOT)) {
+                case "F" -> "Mujeres";
+                case "M" -> "Hombres";
+                case "U" -> "Sin especificar";
+                default -> raw;
+            };
+            case "COUNTRY" -> countryName(raw);
+            default -> raw;
+        };
+    }
+
+    /** Código ISO 3166-1 alpha-2 (ej. {@code PY}) → nombre en español; el propio código si no resuelve. */
+    private static String countryName(String isoCode) {
+        if (isoCode == null || isoCode.length() != 2) {
+            return isoCode;
+        }
+        try {
+            Locale region = new Locale.Builder().setRegion(isoCode.toUpperCase(Locale.ROOT)).build();
+            String name = region.getDisplayCountry(Locale.forLanguageTag("es"));
+            return (name == null || name.isBlank() || name.equalsIgnoreCase(isoCode)) ? isoCode : name;
+        } catch (RuntimeException e) {
+            return isoCode;
+        }
+    }
+
+    /** Ratio {@code part/total} (0..1, como {@code engagementRate}); null si {@code total} es 0. */
+    private static BigDecimal pct(BigDecimal part, BigDecimal total) {
+        if (total == null || total.signum() == 0 || part == null) {
+            return null;
+        }
+        return part.divide(total, 4, RoundingMode.HALF_UP).stripTrailingZeros();
     }
 
     /** Valor del KPI: los stocks (seguidores) usan el último; los flujos, el total del período. */
@@ -249,17 +498,27 @@ public class ReportDataAssembler {
         BigDecimal value = null;
         String metricKey = null;
         String metricName = null;
+        Map<String, BigDecimal> vals = metricsByPost.get(r.id());
         if (resolved != null) {
             metricKey = resolved.key();
             metricName = resolved.displayName();
-            Map<String, BigDecimal> vals = metricsByPost.get(r.id());
             value = vals == null ? null : vals.get(metricKey);
         }
+        BigDecimal watchTime = watchTimeSeconds(r.platform(), r.postType(), vals);
         // En el bare guardamos el remoto del post como candidato; enrich() decide cache vs remoto.
         return new ReportPost(
                 r.id(), r.platform(), r.postType(), displayType(r.postType(), story),
                 r.publishedAt(), localDate(r.publishedAt(), zone), r.permalink(), r.caption(),
-                null, r.remoteThumbnailUrl(), story, metricKey, metricName, clean(value));
+                null, r.remoteThumbnailUrl(), story, metricKey, metricName, clean(value), watchTime);
+    }
+
+    /** Tiempo medio de visionado del post (sólo reels; research/06 §1); null si no aplica o no se capturó. */
+    private static BigDecimal watchTimeSeconds(String platform, String postType, Map<String, BigDecimal> vals) {
+        if (!"REEL".equals(postType) || vals == null) {
+            return null;
+        }
+        String key = WATCH_TIME_KEY.get(platform);
+        return key == null ? null : clean(vals.get(key));
     }
 
     /** Resuelve la miniatura (data-URI base64 cacheada o remoto diferido) de cada post a renderizar. */
@@ -275,11 +534,11 @@ public class ReportDataAssembler {
     private static List<PostGroup> groupByPlatformAndType(List<ReportPost> posts) {
         Map<String, List<ReportPost>> grouped = new LinkedHashMap<>();
         for (ReportPost p : posts) {
-            grouped.computeIfAbsent(p.platform() + " " + p.displayType(), k -> new ArrayList<>()).add(p);
+            grouped.computeIfAbsent(p.platform() + " " + p.displayType(), k -> new ArrayList<>()).add(p);
         }
         return grouped.entrySet().stream()
                 .map(e -> {
-                    String[] parts = e.getKey().split(" ", 2);
+                    String[] parts = e.getKey().split(" ", 2);
                     return new PostGroup(parts[0], parts[1], e.getValue());
                 })
                 .sorted(Comparator
