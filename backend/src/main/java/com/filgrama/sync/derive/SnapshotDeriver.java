@@ -13,7 +13,9 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.MetricLevel;
 import com.filgrama.sync.SnapshotUpsertRepository;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AccountReachSeriesCapture;
 import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
+import com.filgrama.sync.capture.dto.DatedValue;
 import com.filgrama.sync.capture.dto.DemographicSegment;
 
 /**
@@ -62,6 +64,30 @@ public class SnapshotDeriver {
             }
             upsert.upsertPostSnapshot(account.getClientId(), account.getId(), post.getId(),
                     e.getKey(), e.getValue(), capturedAt, captureDate);
+            captured++;
+        }
+        return captured;
+    }
+
+    /**
+     * Upsert de una serie histórica de {@code reach} de cuenta (FG-CS-CAP #1): a diferencia de
+     * {@link #deriveAccount}, acá <b>cada punto trae su propia {@code capture_date}</b> (no "hoy") —
+     * una fila por día de la ventana pedida. Mismo mecanismo idempotente ({@code UNIQUE(account_id,
+     * metric_key, capture_date)}): re-correr sobre un día ya capturado lo corrige, no lo duplica.
+     * Gateado por catálogo igual que el resto (si {@code ig_reach} se apaga, no se persiste nada).
+     * Devuelve cuántos días se capturaron.
+     */
+    public int deriveAccountSeries(SocialAccount account, AccountReachSeriesCapture capture, Instant capturedAt) {
+        if (!catalog.captures(account.getPlatform(), MetricLevel.ACCOUNT, "ig_reach")) {
+            return 0;
+        }
+        int captured = 0;
+        for (DatedValue point : capture.values()) {
+            if (point.value() == null) {
+                continue;
+            }
+            upsert.upsertAccountSnapshot(account.getClientId(), account.getId(),
+                    "ig_reach", point.value(), null, capturedAt, point.date());
             captured++;
         }
         return captured;

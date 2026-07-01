@@ -30,6 +30,11 @@ import com.filgrama.domain.enums.SyncRunStatus;
 class SyncJobIntegrationTest extends SyncTestSupport {
 
     private static final ZoneId ASU = ZoneId.of("America/Asuncion");
+    /** ig_followers_count, ig_views, ig_total_interactions, ig_accounts_engaged (total_value del día). */
+    private static final int IG_ACCOUNT_TOTAL_VALUE_METRICS = 4;
+    /** FG-CS-CAP #1: reach ahora es time_series de ~30 días → una fila por día en cada sync. */
+    private static final int REACH_WINDOW_DAYS = 30;
+    private static final int IG_ACCOUNT_SNAPSHOTS = IG_ACCOUNT_TOTAL_VALUE_METRICS + REACH_WINDOW_DAYS;
 
     private long countAccountSnapshots(Long accountId) {
         return jdbc.queryForObject(
@@ -51,7 +56,8 @@ class SyncJobIntegrationTest extends SyncTestSupport {
         Long run1 = syncService.runOnce();
 
         assertThat(syncRunRepository.findById(run1).orElseThrow().getStatus()).isEqualTo(SyncRunStatus.SUCCESS);
-        assertThat(countAccountSnapshots(account.getId())).isEqualTo(5);   // 5 métricas CORE de cuenta IG
+        // 4 métricas CORE "de hoy" + 30 filas de ig_reach (time_series, FG-CS-CAP #1).
+        assertThat(countAccountSnapshots(account.getId())).isEqualTo(IG_ACCOUNT_SNAPSHOTS);
         assertThat(countPostSnapshots(account.getId())).isEqualTo(16);     // 7+7 (2 posts) + 2 (story)
         assertThat(postRepository.findByAccountId(account.getId())).hasSize(3); // p1, p2, story
 
@@ -59,21 +65,24 @@ class SyncJobIntegrationTest extends SyncTestSupport {
                 .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", today)
                 .orElseThrow().getValue();
         int rawAfterRun1 = rawApiPayloadRepository.findByAccountId(account.getId()).size();
-        assertThat(rawAfterRun1).isEqualTo(5); // ACCOUNT + POSTS_LIST + 2*POST + 1 story POST
+        assertThat(rawAfterRun1).isEqualTo(6); // ACCOUNT + ACCOUNT (reach series) + POSTS_LIST + 2*POST + 1 story POST
 
         // Segundo run el mismo día, con valores nuevos del "API".
         mockProvider.setSeed(2_000L);
         syncService.runOnce();
 
-        // No duplica snapshots: una fila por (cuenta, métrica, día).
-        assertThat(countAccountSnapshots(account.getId())).isEqualTo(5);
+        // No duplica snapshots: una fila por (cuenta, métrica, día) — ni siquiera la serie de reach.
+        assertThat(countAccountSnapshots(account.getId())).isEqualTo(IG_ACCOUNT_SNAPSHOTS);
         assertThat(countPostSnapshots(account.getId())).isEqualTo(16);
         assertThat(postRepository.findByAccountId(account.getId())).hasSize(3);
 
         List<AccountMetricSnapshot> reachRows = accountSnapshotRepository
                 .findByAccountIdAndMetricKeyOrderByCapturedAtAsc(account.getId(), "ig_reach");
-        assertThat(reachRows).hasSize(1);
-        assertThat(reachRows.get(0).getValue()).isNotEqualByComparingTo(reachV1); // último valor del día gana
+        assertThat(reachRows).hasSize(REACH_WINDOW_DAYS);
+        BigDecimal reachV2 = accountSnapshotRepository
+                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", today)
+                .orElseThrow().getValue();
+        assertThat(reachV2).isNotEqualByComparingTo(reachV1); // último valor del día gana (para "hoy")
 
         // El crudo SÍ es append puro: se duplican las filas.
         assertThat(rawApiPayloadRepository.findByAccountId(account.getId())).hasSize(rawAfterRun1 * 2);
@@ -81,6 +90,7 @@ class SyncJobIntegrationTest extends SyncTestSupport {
 
     @Test
     void append_only_hacia_el_futuro_no_toca_dias_pasados() {
+        // Métrica "de hoy" (no time_series): ig_views SÍ respeta el append-only clásico de spec/10.
         var client = newClient("America/Asuncion");
         SocialAccount account = connectAccount(client.getId(), Platform.INSTAGRAM, "histo_ig");
         LocalDate today = LocalDate.now(ASU);
@@ -88,25 +98,57 @@ class SyncJobIntegrationTest extends SyncTestSupport {
         Instant yesterdayInstant = yesterday.atStartOfDay(ASU).toInstant();
 
         // Fila histórica del día anterior.
-        upsertRepository.upsertAccountSnapshot(client.getId(), account.getId(), "ig_reach",
+        upsertRepository.upsertAccountSnapshot(client.getId(), account.getId(), "ig_views",
                 new BigDecimal("999"), null, yesterdayInstant, yesterday);
 
         syncService.runOnce();
 
         // El día pasado queda intacto (nunca UPDATE/DELETE).
         assertThat(accountSnapshotRepository
-                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", yesterday)
+                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_views", yesterday)
                 .orElseThrow().getValue()).isEqualByComparingTo("999");
 
         // Hay una fila nueva para hoy con otro valor.
         var todayRow = accountSnapshotRepository
-                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", today);
+                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_views", today);
         assertThat(todayRow).isPresent();
         assertThat(todayRow.get().getValue()).isNotEqualByComparingTo("999");
 
         // Días distintos = filas distintas.
         assertThat(accountSnapshotRepository
-                .findByAccountIdAndMetricKeyOrderByCapturedAtAsc(account.getId(), "ig_reach")).hasSize(2);
+                .findByAccountIdAndMetricKeyOrderByCapturedAtAsc(account.getId(), "ig_views")).hasSize(2);
+    }
+
+    @Test
+    void reach_series_corrige_dias_dentro_de_la_ventana_pero_no_fuera_de_ella() {
+        // FG-CS-CAP #1: ig_reach es la EXCEPCIÓN al append-only — cada corrida trae time_series de
+        // ~30 días y corrige (upsert) toda la ventana, para absorber el delay de hasta 48h de Meta
+        // (spec/10). Un día DENTRO de la ventana se corrige; uno FUERA (>=30 días atrás) queda intacto.
+        var client = newClient("America/Asuncion");
+        SocialAccount account = connectAccount(client.getId(), Platform.INSTAGRAM, "reach_window_ig");
+        LocalDate today = LocalDate.now(ASU);
+        LocalDate insideWindow = today.minusDays(REACH_WINDOW_DAYS - 1); // borde de la ventana
+        LocalDate outsideWindow = today.minusDays(REACH_WINDOW_DAYS);    // justo fuera
+
+        upsertRepository.upsertAccountSnapshot(client.getId(), account.getId(), "ig_reach",
+                new BigDecimal("111"), null, insideWindow.atStartOfDay(ASU).toInstant(), insideWindow);
+        upsertRepository.upsertAccountSnapshot(client.getId(), account.getId(), "ig_reach",
+                new BigDecimal("222"), null, outsideWindow.atStartOfDay(ASU).toInstant(), outsideWindow);
+
+        syncService.runOnce();
+
+        // Dentro de la ventana: el mock trae un valor determinista para ese día → se corrige.
+        assertThat(accountSnapshotRepository
+                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", insideWindow)
+                .orElseThrow().getValue()).isNotEqualByComparingTo("111");
+        // Fuera de la ventana: nadie lo pidió → queda intacto (append-only clásico).
+        assertThat(accountSnapshotRepository
+                .findByAccountIdAndMetricKeyAndCaptureDate(account.getId(), "ig_reach", outsideWindow)
+                .orElseThrow().getValue()).isEqualByComparingTo("222");
+        // La ventana (30) + el día ya fuera de rango que insertamos a mano = 31 filas de ig_reach.
+        assertThat(accountSnapshotRepository
+                .findByAccountIdAndMetricKeyOrderByCapturedAtAsc(account.getId(), "ig_reach"))
+                .hasSize(REACH_WINDOW_DAYS + 1);
     }
 
     @Test
@@ -137,7 +179,7 @@ class SyncJobIntegrationTest extends SyncTestSupport {
         assertThat(badResult.getErrorMessage()).contains("fallo simulado");
 
         // La cuenta OK persiste; la que falló se revierte por completo (atómico por cuenta).
-        assertThat(countAccountSnapshots(good.getId())).isEqualTo(5);
+        assertThat(countAccountSnapshots(good.getId())).isEqualTo(IG_ACCOUNT_SNAPSHOTS);
         assertThat(countAccountSnapshots(bad.getId())).isZero();
         assertThat(rawApiPayloadRepository.findByAccountId(bad.getId())).isEmpty();
     }
@@ -239,9 +281,9 @@ class SyncJobIntegrationTest extends SyncTestSupport {
         assertThat(run.getStatus()).isEqualTo(SyncRunStatus.SUCCESS);
         assertThat(run.getAccountsTotal()).isEqualTo(1);
         assertThat(run.getAccountsOk()).isEqualTo(1);
-        // Trajo posts + métricas + miniaturas al instante.
+        // Trajo posts + métricas (incl. el backfill de ~30 días de reach, FG-CS-CAP #1) + miniaturas al instante.
         assertThat(postRepository.findByAccountId(account.getId())).hasSize(3);
-        assertThat(countAccountSnapshots(account.getId())).isEqualTo(5);
+        assertThat(countAccountSnapshots(account.getId())).isEqualTo(IG_ACCOUNT_SNAPSHOTS);
         assertThat(mediaAssetRepository.count()).isEqualTo(3);
     }
 

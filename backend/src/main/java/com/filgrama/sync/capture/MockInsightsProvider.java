@@ -3,7 +3,9 @@ package com.filgrama.sync.capture;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,8 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.domain.enums.PostType;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AccountReachSeriesCapture;
+import com.filgrama.sync.capture.dto.DatedValue;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
 import com.filgrama.sync.capture.dto.RawPost;
@@ -62,7 +66,8 @@ public class MockInsightsProvider implements InsightsProvider {
     }
 
     @Override
-    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken) {
+    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken,
+            LocalDate windowSince, LocalDate windowUntil) {
         guard(account);
         Map<String, BigDecimal> metrics = new LinkedHashMap<>();
         for (String key : accountMetricKeys(account.getPlatform())) {
@@ -71,6 +76,25 @@ public class MockInsightsProvider implements InsightsProvider {
         Map<String, Object> raw = new LinkedHashMap<>(metrics);
         raw.put("_mock_account", account.getExternalAccountId());
         return new AccountCapture("mock:" + account.getPlatform() + ":account_insights", toJson(raw), metrics);
+    }
+
+    /** {@code ig_reach} determinista, un valor por día de {@code [since, until]} (simula el time_series real). */
+    @Override
+    public AccountReachSeriesCapture fetchAccountReachSeries(SocialAccount account, String accessToken,
+            LocalDate since, LocalDate until) {
+        guard(account);
+        if (account.getPlatform() != Platform.INSTAGRAM) {
+            return new AccountReachSeriesCapture(null, null, List.of());
+        }
+        List<DatedValue> values = new ArrayList<>();
+        Map<String, Object> raw = new LinkedHashMap<>();
+        for (LocalDate day = since; !day.isAfter(until); day = day.plusDays(1)) {
+            BigDecimal v = value("ig_reach", account.getExternalAccountId() + "|" + day);
+            values.add(new DatedValue(day, v));
+            raw.put(day.toString(), v);
+        }
+        return new AccountReachSeriesCapture("mock:" + account.getPlatform() + ":reach_time_series",
+                toJson(raw), values);
     }
 
     @Override
@@ -155,9 +179,10 @@ public class MockInsightsProvider implements InsightsProvider {
                 published, false, null);
     }
 
+    /** {@code ig_reach} no va acá: es {@code time_series}, la sirve {@link #fetchAccountReachSeries}. */
     private List<String> accountMetricKeys(Platform platform) {
         return switch (platform) {
-            case INSTAGRAM -> List.of("ig_followers_count", "ig_reach", "ig_views",
+            case INSTAGRAM -> List.of("ig_followers_count", "ig_views",
                     "ig_total_interactions", "ig_accounts_engaged");
             case FACEBOOK -> List.of("fb_page_views_total", "fb_page_post_engagements",
                     "fb_page_fan_adds", "fb_page_views");

@@ -304,6 +304,25 @@ scan-al-conectar o si Meta devolvió vacío (revisar `raw_api_payloads` scope=AC
 > Marcar lo confirmado-inexistente con `state`/`tier` en una migración de seguimiento. Estos hallazgos son
 > el input del track de captura de la sesión de coding (ver `tracks/FG-PLAN-reporte-automatico.md`).
 
+### Implementación FG-CS-CAP (1-jul-2026) — reporte del track
+
+> **Estado: código implementado y cubierto por tests (unitarios + integración con Postgres real vía
+> Testcontainers). NO se re-corrió el spike contra la API real de Meta en esta sesión** (sin acceso de
+> red/credenciales al sandbox desde este entorno) — la tabla de abajo distingue qué quedó *verificado
+> por código* de qué sigue *pendiente de re-validar contra Meta real*. Recomendado: correr un sync real
+> contra @ohmy.bunny.py (account_id=19) y actualizar esta tabla con el resultado.
+
+| Hallazgo | Fix aplicado | Verificado por |
+|---|---|---|
+| Insights de cuenta en 0 (ventana de 1 día) | `reach` pasa a `metric_type=time_series` de ~30 días (una fila por `capture_date`); `views`/`total_interactions`/`accounts_engaged`/`profile_views` pasan a `metric_type=total_value` con `since`/`until` de ~30 días. Corre en **toda** corrida (job diario y scan al conectar) → backfillea solo con conectar la cuenta. | Tests unitarios de parseo (`MetaInsightsProviderTest`) + integración end-to-end con `MockInsightsProvider` (`SyncJobIntegrationTest`: ~30 filas de `ig_reach` por sync, ventana se corrige, fuera de ventana queda intacta). **Pendiente:** confirmar contra Meta real que `metric_type=total_value` con `since`/`until` multi-día efectivamente devuelve el total del rango (asumido según la doc, no probado en sandbox). |
+| `ig_follows_and_unfollows` nunca se pedía | Nueva sub-llamada best-effort en `fetchAccountExtras` (`metric=follows_and_unfollows`, misma ventana de 30 días). | Test unitario de parseo. **Pendiente:** confirmar en sandbox que la cuenta (>=100 followers) la devuelve. |
+| `ig_views_followers/non_followers`, `ig_taps_whatsapp/direction` "no capturaron" pese a estar cableados | Ya estaban cableados; la sospecha es la misma ventana de 1 día (`period=day` sin rango) — se les aplicó el mismo fix de `since`/`until` de 30 días que a los totales de cuenta. | Cambio de código + tests unitarios existentes actualizados. **Pendiente:** re-correr el sync real; si Meta sigue sin devolver estos breakdowns con la ventana ampliada, es evidencia más fuerte de que el API no los soporta (actualizar esta tabla a "no probable"). |
+| `ig_reels_avg_watch_time` no capturó pese a estar cableado (reposts/profile_visits sí, mismo media) | Se separó en una llamada Graph propia (antes iba combinada con `reposts,profile_visits`) para que un rechazo/ausencia de esta métrica puntual no dependa de ni afecte a las otras dos, y sea diagnosticable por separado en `raw_api_payloads`. No se identificó un bug de parseo (el test con payload de ejemplo ya pasaba). | Tests unitarios (incl. uno nuevo: la llamada de watch-time falla y reposts/profile_visits igual se capturan). **Pendiente:** confirmar en sandbox si aislar la llamada resuelve la captura, o si es un límite real de Meta (p. ej. reel con pocas reproducciones aún sin agregar el dato). |
+| Miniaturas del feed no se ven en el reporte web | El sync **ya** cacheaba miniaturas de todos los posts (no solo stories) desde una sesión anterior (`AccountSyncProcessor.cacheThumbnailBestEffort`, `ThumbnailFetcher`) — no se encontró un bug en la captura. Si el reporte web sigue sin mostrarlas, el problema está en el consumo (`ReportData`/frontend), **fuera del alcance de este track** (dueño: tracks REP/FE). | Cobertura de test preexistente (`cachea_miniatura_real_de_posts_normales_y_es_idempotente`) sigue verde. |
+
+**No tocado (fuera de alcance confirmado):** el split `follow_type` de `total_interactions` (spec/05 ya
+lo descarta, `[no probable]`) y `ig_reach_followers/non_followers` (quedan EXTENDED, no se activan en v1.1).
+
 ## Fuentes
 - [Instagram Account Insights — Meta for Developers](https://developers.facebook.com/docs/instagram-platform/api-reference/instagram-user/insights/)
 - [Instagram Media Insights — Meta for Developers](https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/)

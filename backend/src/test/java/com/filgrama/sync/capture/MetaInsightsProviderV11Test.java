@@ -2,12 +2,14 @@ package com.filgrama.sync.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -36,6 +38,8 @@ class MetaInsightsProviderV11Test {
 
     private static final String BASE = "https://graph.facebook.com";
     private static final String TOKEN = "page-token";
+    private static final LocalDate SINCE = LocalDate.of(2026, 6, 1);
+    private static final LocalDate UNTIL = LocalDate.of(2026, 6, 30);
 
     private MockRestServiceServer server;
 
@@ -95,8 +99,13 @@ class MetaInsightsProviderV11Test {
     }
 
     @Test
-    void accountExtrasParsesFollowTypeSplitsProfileViewsAndTaps() {
+    void accountExtrasParsesFollowsAndUnfollowsFollowTypeSplitsProfileViewsAndTaps() {
         MetaInsightsProvider p = provider();
+        server.expect(requestTo(allOf(containsString("metric=follows_and_unfollows"),
+                        containsString("since=2026-06-01"), containsString("until=2026-06-30"))))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"name\":\"follows_and_unfollows\",\"total_value\":{\"value\":136}}]}",
+                        MediaType.APPLICATION_JSON));
         server.expect(requestTo(containsString("metric=profile_views")))
                 .andRespond(withSuccess("{\"data\":[{\"name\":\"profile_views\",\"total_value\":{\"value\":363}}]}",
                         MediaType.APPLICATION_JSON));
@@ -122,8 +131,9 @@ class MetaInsightsProviderV11Test {
                             {"dimension_values":["DIRECTION"],"value":2},
                             {"dimension_values":["CALL"],"value":1}]}]}}]}""", MediaType.APPLICATION_JSON));
 
-        AccountCapture cap = p.fetchAccountExtras(account(Platform.INSTAGRAM, "IG123"), TOKEN);
+        AccountCapture cap = p.fetchAccountExtras(account(Platform.INSTAGRAM, "IG123"), TOKEN, SINCE, UNTIL);
 
+        assertThat(cap.metrics().get("ig_follows_and_unfollows")).isEqualByComparingTo("136");
         assertThat(cap.metrics().get("ig_profile_views")).isEqualByComparingTo("363");
         assertThat(cap.metrics().get("ig_views_followers")).isEqualByComparingTo("3600");
         assertThat(cap.metrics().get("ig_views_non_followers")).isEqualByComparingTo("1500");
@@ -136,14 +146,18 @@ class MetaInsightsProviderV11Test {
     }
 
     @Test
-    void postExtrasParsesRepostsProfileVisitsAndWatchTimeMsToSeconds() {
+    void postExtrasParsesRepostsProfileVisitsAndWatchTimeMsToSecondsAsSeparateCalls() {
         MetaInsightsProvider p = provider();
-        server.expect(requestTo(containsString("metric=reposts,profile_visits,ig_reels_avg_watch_time")))
+        // Dos llamadas separadas (FG-CS-CAP #3): reposts/profile_visits para todo post, watch-time solo reels.
+        server.expect(requestTo(containsString("metric=reposts,profile_visits&")))
                 .andRespond(withSuccess("""
                         {"data":[
                           {"name":"reposts","total_value":{"value":12}},
-                          {"name":"profile_visits","total_value":{"value":7}},
-                          {"name":"ig_reels_avg_watch_time","total_value":{"value":13000}}]}""",
+                          {"name":"profile_visits","total_value":{"value":7}}]}""",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("metric=ig_reels_avg_watch_time")))
+                .andRespond(withSuccess(
+                        "{\"data\":[{\"name\":\"ig_reels_avg_watch_time\",\"total_value\":{\"value\":13000}}]}",
                         MediaType.APPLICATION_JSON));
 
         RawPost reel = new RawPost("M2", PostType.REEL, null, null, null, null, null, false, null);
@@ -152,6 +166,24 @@ class MetaInsightsProviderV11Test {
         assertThat(cap.metrics().get("ig_post_reposts")).isEqualByComparingTo("12");
         assertThat(cap.metrics().get("ig_post_profile_visits")).isEqualByComparingTo("7");
         assertThat(cap.metrics().get("ig_reels_avg_watch_time")).isEqualByComparingTo("13"); // 13000 ms → 13 s
+        server.verify();
+    }
+
+    @Test
+    void postExtrasKeepsRepostsWhenWatchTimeCallFailsForAReel() {
+        // La llamada aislada (FG-CS-CAP #3) evita que un watch-time rechazado tumbe reposts/profile_visits.
+        MetaInsightsProvider p = provider();
+        server.expect(requestTo(containsString("metric=reposts,profile_visits&")))
+                .andRespond(withSuccess("{\"data\":[{\"name\":\"reposts\",\"total_value\":{\"value\":9}}]}",
+                        MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("metric=ig_reels_avg_watch_time")))
+                .andRespond(withStatus(HttpStatus.BAD_REQUEST));
+
+        RawPost reel = new RawPost("M2", PostType.REEL, null, null, null, null, null, false, null);
+        PostInsightsCapture cap = p.fetchPostExtras(account(Platform.INSTAGRAM, "IG123"), reel, TOKEN);
+
+        assertThat(cap.metrics().get("ig_post_reposts")).isEqualByComparingTo("9");
+        assertThat(cap.metrics()).doesNotContainKey("ig_reels_avg_watch_time");
         server.verify();
     }
 
@@ -179,7 +211,7 @@ class MetaInsightsProviderV11Test {
 
         SocialAccount acct = account(Platform.INSTAGRAM, "IG123");
         assertThatCode(() -> {
-            AccountCapture extras = p.fetchAccountExtras(acct, TOKEN);
+            AccountCapture extras = p.fetchAccountExtras(acct, TOKEN, SINCE, UNTIL);
             AudienceDemographicsCapture demo = p.fetchAudienceDemographics(acct, TOKEN);
             assertThat(extras.metrics()).isEmpty();
             assertThat(demo.segments()).isEmpty();
@@ -191,7 +223,7 @@ class MetaInsightsProviderV11Test {
         MetaInsightsProvider p = provider();
         SocialAccount fb = account(Platform.FACEBOOK, "PAGE9");
 
-        assertThat(p.fetchAccountExtras(fb, TOKEN).metrics()).isEmpty();
+        assertThat(p.fetchAccountExtras(fb, TOKEN, SINCE, UNTIL).metrics()).isEmpty();
         assertThat(p.fetchAudienceDemographics(fb, TOKEN).segments()).isEmpty();
         List<DemographicSegment> none = p.fetchAudienceDemographics(fb, TOKEN).segments();
         assertThat(none).isEmpty();

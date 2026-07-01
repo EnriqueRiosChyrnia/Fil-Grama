@@ -2,12 +2,14 @@ package com.filgrama.sync.capture;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.time.LocalDate;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +22,7 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.domain.enums.PostType;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AccountReachSeriesCapture;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
 import com.filgrama.sync.capture.dto.RawPost;
@@ -48,29 +51,66 @@ class MetaInsightsProviderTest {
         return a;
     }
 
+    private static final LocalDate SINCE = LocalDate.of(2026, 6, 1);
+    private static final LocalDate UNTIL = LocalDate.of(2026, 6, 30);
+
     @Test
-    void igAccountInsightsMapsCoreMetrics() {
+    void igAccountInsightsMapsCoreMetricsAsTotalValueOfTheWindow() {
         MetaInsightsProvider p = provider();
         server.expect(requestTo(containsString("/v21.0/IG123?fields=followers_count")))
                 .andRespond(withSuccess("{\"followers_count\":5000,\"username\":\"demo\",\"id\":\"IG123\"}",
                         MediaType.APPLICATION_JSON));
-        server.expect(requestTo(containsString("/v21.0/IG123/insights")))
+        server.expect(requestTo(allOf(containsString("/v21.0/IG123/insights"),
+                        containsString("metric=views,total_interactions,accounts_engaged"),
+                        containsString("since=2026-06-01"), containsString("until=2026-06-30"))))
                 .andRespond(withSuccess("""
                         {"data":[
-                          {"name":"reach","total_value":{"value":1000}},
-                          {"name":"views","total_value":{"value":2000}},
-                          {"name":"total_interactions","total_value":{"value":300}},
-                          {"name":"accounts_engaged","total_value":{"value":150}}
+                          {"name":"views","total_value":{"value":5100}},
+                          {"name":"total_interactions","total_value":{"value":480}},
+                          {"name":"accounts_engaged","total_value":{"value":300}}
                         ]}""", MediaType.APPLICATION_JSON));
 
-        AccountCapture cap = p.fetchAccountInsights(account(Platform.INSTAGRAM, "IG123"), TOKEN);
+        AccountCapture cap = p.fetchAccountInsights(account(Platform.INSTAGRAM, "IG123"), TOKEN, SINCE, UNTIL);
 
-        assertThat(cap.metrics()).containsKeys("ig_followers_count", "ig_reach", "ig_views",
+        assertThat(cap.metrics()).containsKeys("ig_followers_count", "ig_views",
                 "ig_total_interactions", "ig_accounts_engaged");
+        assertThat(cap.metrics()).doesNotContainKey("ig_reach"); // reach es time_series aparte
         assertThat(cap.metrics().get("ig_followers_count")).isEqualByComparingTo("5000");
-        assertThat(cap.metrics().get("ig_reach")).isEqualByComparingTo("1000");
+        assertThat(cap.metrics().get("ig_views")).isEqualByComparingTo("5100");
         assertThat(cap.rawJson()).contains("\"node\":").contains("\"insights\":");
         server.verify();
+    }
+
+    @Test
+    void igAccountReachSeriesParsesOnePointPerDayFromTimeSeries() {
+        MetaInsightsProvider p = provider();
+        server.expect(requestTo(allOf(containsString("/v21.0/IG123/insights"),
+                        containsString("metric=reach"), containsString("metric_type=time_series"),
+                        containsString("since=2026-06-01"), containsString("until=2026-06-03"))))
+                .andRespond(withSuccess("""
+                        {"data":[{"name":"reach","period":"day","values":[
+                          {"value":0,"end_time":"2026-06-01T07:00:00+0000"},
+                          {"value":221,"end_time":"2026-06-02T07:00:00+0000"},
+                          {"value":76,"end_time":"2026-06-03T07:00:00+0000"}]}]}""",
+                        MediaType.APPLICATION_JSON));
+
+        AccountReachSeriesCapture cap = p.fetchAccountReachSeries(account(Platform.INSTAGRAM, "IG123"), TOKEN,
+                SINCE, LocalDate.of(2026, 6, 3));
+
+        assertThat(cap.values()).hasSize(3);
+        assertThat(cap.values().get(0).date()).isEqualTo(LocalDate.of(2026, 6, 1));
+        assertThat(cap.values().get(0).value()).isEqualByComparingTo("0"); // día sin actividad: 0 legítimo
+        assertThat(cap.values().get(1).date()).isEqualTo(LocalDate.of(2026, 6, 2));
+        assertThat(cap.values().get(1).value()).isEqualByComparingTo("221");
+        assertThat(cap.values().get(2).value()).isEqualByComparingTo("76");
+        server.verify();
+    }
+
+    @Test
+    void igAccountReachSeriesEmptyForFacebook() {
+        MetaInsightsProvider p = provider();
+        assertThat(p.fetchAccountReachSeries(account(Platform.FACEBOOK, "PAGE9"), TOKEN, SINCE, UNTIL).values())
+                .isEmpty();
     }
 
     @Test
@@ -84,7 +124,7 @@ class MetaInsightsProviderTest {
                           {"name":"page_fan_adds","values":[{"value":7}]}
                         ]}""", MediaType.APPLICATION_JSON));
 
-        AccountCapture cap = p.fetchAccountInsights(account(Platform.FACEBOOK, "PAGE9"), TOKEN);
+        AccountCapture cap = p.fetchAccountInsights(account(Platform.FACEBOOK, "PAGE9"), TOKEN, SINCE, UNTIL);
 
         assertThat(cap.metrics().get("fb_page_views_total")).isEqualByComparingTo("12"); // último de la serie
         assertThat(cap.metrics().get("fb_page_post_engagements")).isEqualByComparingTo("50");
@@ -167,7 +207,7 @@ class MetaInsightsProviderTest {
         MetaInsightsProvider p = provider();
         server.expect(method(HttpMethod.GET)).andRespond(withServerError());
 
-        assertThatThrownBy(() -> p.fetchAccountInsights(account(Platform.FACEBOOK, "PAGE9"), TOKEN))
+        assertThatThrownBy(() -> p.fetchAccountInsights(account(Platform.FACEBOOK, "PAGE9"), TOKEN, SINCE, UNTIL))
                 .isInstanceOf(TransientInsightsException.class);
     }
 
