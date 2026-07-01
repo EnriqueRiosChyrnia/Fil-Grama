@@ -24,6 +24,7 @@ import com.filgrama.sync.capture.InsightsProvider;
 import com.filgrama.sync.capture.InsightsProviderRegistry;
 import com.filgrama.sync.capture.ThumbnailFetcher;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AccountReachSeriesCapture;
 import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
@@ -46,6 +47,8 @@ public class AccountSyncProcessor {
 
     private static final Logger log = LoggerFactory.getLogger(AccountSyncProcessor.class);
     private static final ZoneId DEFAULT_ZONE = ZoneId.of("America/Asuncion");
+    /** Ventana de {@code total_value}/{@code time_series} de cuenta (FG-CS-CAP #1): ~30 días. */
+    private static final int ACCOUNT_WINDOW_DAYS = 30;
 
     private final InsightsProviderRegistry registry;
     private final TokenAccessor tokenAccessor;
@@ -81,16 +84,26 @@ public class AccountSyncProcessor {
         InsightsProvider provider = registry.resolve(account.getPlatform());
         Instant now = Instant.now();
         LocalDate captureDate = now.atZone(clientZone(account.getClientId())).toLocalDate();
+        LocalDate windowSince = captureDate.minusDays(ACCOUNT_WINDOW_DAYS - 1L);
         int captured = 0;
 
-        // (2-4) insights de cuenta
+        // (2-4) insights de cuenta: total_value de la ventana de ~30 días (FG-CS-CAP #1)
         AccountCapture accountCapture = retrier.withRetry("acct:" + account.getId(),
-                () -> provider.fetchAccountInsights(account, token));
+                () -> provider.fetchAccountInsights(account, token, windowSince, captureDate));
         saveRaw(runId, account, RawScope.ACCOUNT, null, accountCapture.endpoint(), accountCapture.rawJson(), now);
         captured += deriver.deriveAccount(account, accountCapture, now, captureDate);
 
-        // (v1.1, best-effort) métricas extra de cuenta (splits follow_type, profile_views, taps por destino)
-        captured += captureAccountExtras(provider, account, token, runId, now, captureDate);
+        // (FG-CS-CAP #1) reach como time_series de la misma ventana: una fila por día, no best-effort
+        // (es CORE) — corre en TODAS las corridas, así el primer sync de una cuenta nueva ya
+        // "backfillea" sus últimos ~30 días (spec/10 §Escaneo al conectar) sin lógica especial.
+        AccountReachSeriesCapture reachSeries = retrier.withRetry("acct-reach:" + account.getId(),
+                () -> provider.fetchAccountReachSeries(account, token, windowSince, captureDate));
+        saveRawIfPresent(runId, account, RawScope.ACCOUNT, null, reachSeries.endpoint(), reachSeries.rawJson(), now);
+        captured += deriver.deriveAccountSeries(account, reachSeries, now);
+
+        // (v1.1, best-effort) métricas extra de cuenta (follows_and_unfollows, splits follow_type,
+        // profile_views, taps por destino) — misma ventana de ~30 días.
+        captured += captureAccountExtras(provider, account, token, runId, now, captureDate, windowSince);
         // (v1.1, best-effort, gateado por catálogo) demografía de audiencia → audience_demographics
         captured += captureDemographics(provider, account, token, runId, now, captureDate);
 
@@ -128,14 +141,15 @@ public class AccountSyncProcessor {
     }
 
     /**
-     * v1.1 best-effort: métricas extra de cuenta (splits {@code follow_type}, {@code profile_views},
-     * taps por destino). El provider no lanza; igual se envuelve por si una operación de BD falla.
-     * El deriver filtra por catálogo CORE/ACTIVE → las EXTENDED ({@code ig_reach_*}) no se persisten.
+     * v1.1 best-effort: métricas extra de cuenta ({@code follows_and_unfollows}, splits
+     * {@code follow_type}, {@code profile_views}, taps por destino). El provider no lanza; igual se
+     * envuelve por si una operación de BD falla. El deriver filtra por catálogo CORE/ACTIVE → las
+     * EXTENDED ({@code ig_reach_*}) no se persisten.
      */
     private int captureAccountExtras(InsightsProvider provider, SocialAccount account, String token,
-            Long runId, Instant now, LocalDate captureDate) {
+            Long runId, Instant now, LocalDate captureDate, LocalDate windowSince) {
         try {
-            AccountCapture extras = provider.fetchAccountExtras(account, token);
+            AccountCapture extras = provider.fetchAccountExtras(account, token, windowSince, captureDate);
             if (extras == null || extras.metrics().isEmpty()) {
                 return 0;
             }

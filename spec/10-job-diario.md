@@ -60,6 +60,15 @@ Reintentar el mismo día **no debe corromper la serie**. Mecanismo:
 > Esto refina "append-only": **una fila inmutable por día hacia el futuro**; reintentos del mismo día
 > actualizan solo ese día. Ajuste aplicado en [[02-modelo-de-datos]].
 
+**Excepción — `ig_reach` (FG-CS-CAP, 1-jul-2026):** es la única métrica de cuenta con `time_series`
+propia en Meta (spec/05), así que **cada corrida** (job diario y scan al conectar) pide los últimos
+~30 días de una y hace upsert de **toda la ventana**, no solo del día de hoy. Esto absorbe el delay de
+hasta 48h de Meta sobre más de un día atrás (antes solo se corregía "hoy") y además resuelve el
+bootstrap histórico de `ig_reach` sin lógica especial: el primer sync de una cuenta nueva ya trae sus
+últimos ~30 días. Días fuera de esa ventana siguen siendo inmutables (append-only clásico). El resto de
+las métricas de cuenta (`views`/`total_interactions`/`accounts_engaged`/etc.) siguen siendo
+`total_value` de la ventana pero se guardan **una sola fila "de hoy"**, no una serie.
+
 ## Stories (captura sub-diaria)
 
 - Las stories de IG y sus métricas **solo viven 24 h**. Un job 1×/día las perdería.
@@ -84,7 +93,10 @@ Reintentar el mismo día **no debe corromper la serie**. Mecanismo:
 
 ## Bootstrap histórico
 
-- Las APIs **no dan historia** → al conectar una cuenta nueva, la serie **empieza ese día**. No hay backfill.
+- Las APIs **no dan historia** → al conectar una cuenta nueva, la serie **empieza ese día**. No hay
+  backfill — **excepto `ig_reach`** (FG-CS-CAP): al ser `time_series` nativa de Meta, el scan al
+  conectar ya trae y upsertea sus últimos ~30 días (ver §Idempotencia), así el primer reporte de una
+  cuenta IG nueva no arranca en cero.
 - Sí se puede traer la **lista de posts existentes** (con sus métricas actuales) al conectar, para
   poblar `posts` y tener un punto de partida.
 

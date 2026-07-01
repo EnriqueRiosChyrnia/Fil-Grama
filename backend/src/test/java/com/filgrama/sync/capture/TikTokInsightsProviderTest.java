@@ -52,7 +52,7 @@ class TikTokInsightsProviderTest {
                          "error":{"code":"ok","message":"","log_id":"x"}}""",
                         MediaType.APPLICATION_JSON));
 
-        AccountCapture cap = p.fetchAccountInsights(account(), TOKEN);
+        AccountCapture cap = p.fetchAccountInsights(account(), TOKEN, null, null);
 
         assertThat(cap.metrics().get("tt_follower_count")).isEqualByComparingTo("1000");
         assertThat(cap.metrics().get("tt_likes_count")).isEqualByComparingTo("5000");
@@ -110,7 +110,7 @@ class TikTokInsightsProviderTest {
                 .andRespond(withSuccess("{\"data\":{},\"error\":{\"code\":\"access_token_invalid\","
                         + "\"message\":\"bad\",\"log_id\":\"x\"}}", MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> p.fetchAccountInsights(account(), TOKEN))
+        assertThatThrownBy(() -> p.fetchAccountInsights(account(), TOKEN, null, null))
                 .isInstanceOf(InsightsException.class)
                 .isNotInstanceOf(TransientInsightsException.class);
     }
@@ -122,7 +122,7 @@ class TikTokInsightsProviderTest {
                 .andRespond(withSuccess("{\"data\":{},\"error\":{\"code\":\"rate_limit_exceeded\"}}",
                         MediaType.APPLICATION_JSON));
 
-        assertThatThrownBy(() -> p.fetchAccountInsights(account(), TOKEN))
+        assertThatThrownBy(() -> p.fetchAccountInsights(account(), TOKEN, null, null))
                 .isInstanceOf(TransientInsightsException.class);
     }
 }

@@ -2,7 +2,9 @@ package com.filgrama.sync.capture;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -18,7 +20,9 @@ import com.filgrama.domain.SocialAccount;
 import com.filgrama.domain.enums.Platform;
 import com.filgrama.domain.enums.PostType;
 import com.filgrama.sync.capture.dto.AccountCapture;
+import com.filgrama.sync.capture.dto.AccountReachSeriesCapture;
 import com.filgrama.sync.capture.dto.AudienceDemographicsCapture;
+import com.filgrama.sync.capture.dto.DatedValue;
 import com.filgrama.sync.capture.dto.DemographicSegment;
 import com.filgrama.sync.capture.dto.PostInsightsCapture;
 import com.filgrama.sync.capture.dto.PostsListCapture;
@@ -70,30 +74,74 @@ public class MetaInsightsProvider implements InsightsProvider {
     // ---- cuenta ----
 
     @Override
-    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken) {
+    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken,
+            LocalDate windowSince, LocalDate windowUntil) {
         return account.getPlatform() == Platform.INSTAGRAM
-                ? igAccount(account, accessToken)
+                ? igAccount(account, accessToken, windowSince, windowUntil)
                 : fbAccount(account, accessToken);
     }
 
-    private AccountCapture igAccount(SocialAccount account, String token) {
+    /**
+     * {@code views}/{@code total_interactions}/{@code accounts_engaged} como {@code total_value} de
+     * la ventana {@code [since, until]} (~30 días, FG-CS-CAP): pedidas por día único daban 0 en días
+     * sin actividad (research/06 §9). {@code reach} se saca de acá: es {@code time_series} propia
+     * (ver {@link #fetchAccountReachSeries}). {@code followers_count} es una foto del nodo, no un
+     * insight — no depende de ventana.
+     */
+    private AccountCapture igAccount(SocialAccount account, String token, LocalDate since, LocalDate until) {
         String id = enc(account.getExternalAccountId());
         String nodeBody = graphGet("/" + id + "?fields=followers_count,username&access_token=" + enc(token));
         String insightsBody = graphGet("/" + id + "/insights"
-                + "?metric=reach,views,total_interactions,accounts_engaged"
-                + "&period=day&metric_type=total_value&access_token=" + enc(token));
+                + "?metric=views,total_interactions,accounts_engaged"
+                + "&period=day&metric_type=total_value&since=" + since + "&until=" + until
+                + "&access_token=" + enc(token));
 
         Map<String, BigDecimal> insights = insightsByName(InsightsHttpSupport.tree(insightsBody));
         JsonNode node = InsightsHttpSupport.tree(nodeBody);
 
         Map<String, BigDecimal> metrics = new LinkedHashMap<>();
         put(metrics, "ig_followers_count", InsightsHttpSupport.number(node, "followers_count"));
-        put(metrics, "ig_reach", insights.get("reach"));
         put(metrics, "ig_views", insights.get("views"));
         put(metrics, "ig_total_interactions", insights.get("total_interactions"));
         put(metrics, "ig_accounts_engaged", insights.get("accounts_engaged"));
         return new AccountCapture("GET /" + V + "/{ig-user-id} + /insights",
                 combine("node", nodeBody, "insights", insightsBody), metrics);
+    }
+
+    /**
+     * {@code reach} como {@code time_series} de {@code [since, until]} (~30 días): la única métrica
+     * de cuenta con serie propia en Meta (spec/05). Una fila por día devuelto ({@code values[].end_time}
+     * → fecha UTC). El mismo pedido corre en <b>todas</b> las corridas (job diario y scan al conectar),
+     * así el primer sync de una cuenta nueva ya "backfillea" sus últimos ~30 días (FG-CS-CAP #1) y las
+     * corridas siguientes corrigen la ventana por el delay de hasta 48h de Meta (spec/10).
+     */
+    @Override
+    public AccountReachSeriesCapture fetchAccountReachSeries(SocialAccount account, String accessToken,
+            LocalDate since, LocalDate until) {
+        if (account.getPlatform() != Platform.INSTAGRAM) {
+            return new AccountReachSeriesCapture(null, null, List.of());
+        }
+        String id = enc(account.getExternalAccountId());
+        String body = graphGet("/" + id + "/insights"
+                + "?metric=reach&period=day&metric_type=time_series&since=" + since + "&until=" + until
+                + "&access_token=" + enc(accessToken));
+
+        List<DatedValue> values = new ArrayList<>();
+        JsonNode tree = InsightsHttpSupport.tree(body);
+        for (JsonNode metric : tree.path("data")) {
+            if (!"reach".equals(text(metric, "name"))) {
+                continue;
+            }
+            for (JsonNode point : metric.path("values")) {
+                Instant endTime = parseTime(text(point, "end_time"));
+                BigDecimal value = InsightsHttpSupport.number(point, "value");
+                if (endTime != null && value != null) {
+                    values.add(new DatedValue(endTime.atZone(ZoneOffset.UTC).toLocalDate(), value));
+                }
+            }
+        }
+        return new AccountReachSeriesCapture("GET /" + V + "/{ig-user-id}/insights (reach time_series)",
+                body, values);
     }
 
     private AccountCapture fbAccount(SocialAccount account, String token) {
@@ -246,28 +294,43 @@ public class MetaInsightsProvider implements InsightsProvider {
     // ---- extras v1.1 (FG-T1): llamadas Graph aparte y best-effort ----
 
     /**
-     * Splits {@code follow_type} de views/reach, {@code profile_views} y taps por destino. Cada
-     * sub-llamada es independiente y best-effort ({@link #graphGetQuietly}): un nombre/breakdown que
-     * la API rechace devuelve {@code null} y se omite, sin tumbar las demás ni la captura CORE. Solo IG.
+     * {@code follows_and_unfollows}, splits {@code follow_type} de views/reach, {@code profile_views}
+     * y taps por destino. Cada sub-llamada es independiente y best-effort ({@link #graphGetQuietly}):
+     * un nombre/breakdown que la API rechace devuelve {@code null} y se omite, sin tumbar las demás
+     * ni la captura CORE. Mismo rango {@code [since, until]} que {@link #fetchAccountInsights}: son
+     * {@code total_value} de período, no de un día (FG-CS-CAP #1 y #2 — research/06 §9 encontró estas
+     * llamadas devolviendo vacío con {@code period=day} solo). Solo IG.
      */
     @Override
-    public AccountCapture fetchAccountExtras(SocialAccount account, String token) {
+    public AccountCapture fetchAccountExtras(SocialAccount account, String token, LocalDate since, LocalDate until) {
         if (account.getPlatform() != Platform.INSTAGRAM) {
             return new AccountCapture(null, null, Map.of());
         }
         String id = enc(account.getExternalAccountId());
+        String range = "&since=" + since + "&until=" + until;
         Map<String, BigDecimal> metrics = new LinkedHashMap<>();
         Map<String, String> raws = new LinkedHashMap<>();
 
+        String followsAndUnfollows = graphGetQuietly("/" + id + "/insights"
+                + "?metric=follows_and_unfollows&period=day&metric_type=total_value" + range
+                + "&access_token=" + enc(token));
+        if (followsAndUnfollows != null) {
+            raws.put("follows_and_unfollows", followsAndUnfollows);
+            put(metrics, "ig_follows_and_unfollows",
+                    insightsByName(InsightsHttpSupport.tree(followsAndUnfollows)).get("follows_and_unfollows"));
+        }
+
         String profileViews = graphGetQuietly("/" + id + "/insights"
-                + "?metric=profile_views&period=day&metric_type=total_value&access_token=" + enc(token));
+                + "?metric=profile_views&period=day&metric_type=total_value" + range
+                + "&access_token=" + enc(token));
         if (profileViews != null) {
             raws.put("profile_views", profileViews);
             put(metrics, "ig_profile_views", insightsByName(InsightsHttpSupport.tree(profileViews)).get("profile_views"));
         }
 
         String viewsSplit = graphGetQuietly("/" + id + "/insights"
-                + "?metric=views&period=day&metric_type=total_value&breakdown=follow_type&access_token=" + enc(token));
+                + "?metric=views&period=day&metric_type=total_value&breakdown=follow_type" + range
+                + "&access_token=" + enc(token));
         if (viewsSplit != null) {
             raws.put("views_follow_type", viewsSplit);
             forEachBreakdown(InsightsHttpSupport.tree(viewsSplit), (dim, val) ->
@@ -275,7 +338,8 @@ public class MetaInsightsProvider implements InsightsProvider {
         }
 
         String reachSplit = graphGetQuietly("/" + id + "/insights"
-                + "?metric=reach&period=day&metric_type=total_value&breakdown=follow_type&access_token=" + enc(token));
+                + "?metric=reach&period=day&metric_type=total_value&breakdown=follow_type" + range
+                + "&access_token=" + enc(token));
         if (reachSplit != null) {
             raws.put("reach_follow_type", reachSplit);
             forEachBreakdown(InsightsHttpSupport.tree(reachSplit), (dim, val) ->
@@ -284,7 +348,7 @@ public class MetaInsightsProvider implements InsightsProvider {
 
         String taps = graphGetQuietly("/" + id + "/insights"
                 + "?metric=profile_links_taps&period=day&metric_type=total_value&breakdown=contact_button_type"
-                + "&access_token=" + enc(token));
+                + range + "&access_token=" + enc(token));
         if (taps != null) {
             raws.put("profile_links_taps", taps);
             BigDecimal[] total = {null};
@@ -303,8 +367,12 @@ public class MetaInsightsProvider implements InsightsProvider {
 
     /**
      * Métricas extra por media: {@code reposts}, {@code profile_visits} y (solo reels)
-     * {@code ig_reels_avg_watch_time} (la API la da en ms → se persiste en segundos). Llamada aparte
-     * y best-effort para no romper {@link #fetchPostInsights}. Solo IG.
+     * {@code ig_reels_avg_watch_time} (la API la da en ms → se persiste en segundos). Dos llamadas
+     * <b>separadas</b> (no una combinada, FG-CS-CAP #3): así un nombre rechazado en una no arrastra a
+     * la otra — research/06 §9 encontró el reel con {@code reposts}/{@code profile_visits} capturados
+     * pero sin watch-time pese a estar cableado; aislar la sub-llamada lo hace diagnosticable por
+     * separado en {@code raw_api_payloads} sin arriesgar las otras dos. Best-effort, no rompe
+     * {@link #fetchPostInsights}. Solo IG.
      */
     @Override
     public PostInsightsCapture fetchPostExtras(SocialAccount account, RawPost post, String token) {
@@ -312,22 +380,35 @@ public class MetaInsightsProvider implements InsightsProvider {
             return new PostInsightsCapture(null, null, Map.of());
         }
         String id = enc(post.externalPostId());
-        String metricList = "reposts,profile_visits"
-                + (post.postType() == PostType.REEL ? ",ig_reels_avg_watch_time" : "");
-        String body = graphGetQuietly("/" + id + "/insights?metric=" + metricList + "&access_token=" + enc(token));
-        if (body == null) {
+        Map<String, BigDecimal> metrics = new LinkedHashMap<>();
+        Map<String, String> raws = new LinkedHashMap<>();
+
+        String base = graphGetQuietly("/" + id + "/insights?metric=reposts,profile_visits&access_token=" + enc(token));
+        if (base != null) {
+            raws.put("reposts_profile_visits", base);
+            Map<String, BigDecimal> insights = insightsByName(InsightsHttpSupport.tree(base));
+            put(metrics, "ig_post_reposts", insights.get("reposts"));
+            put(metrics, "ig_post_profile_visits", insights.get("profile_visits"));
+        }
+
+        if (post.postType() == PostType.REEL) {
+            String watch = graphGetQuietly("/" + id
+                    + "/insights?metric=ig_reels_avg_watch_time&access_token=" + enc(token));
+            if (watch != null) {
+                raws.put("ig_reels_avg_watch_time", watch);
+                BigDecimal watchMs = insightsByName(InsightsHttpSupport.tree(watch)).get("ig_reels_avg_watch_time");
+                if (watchMs != null) {
+                    metrics.put("ig_reels_avg_watch_time",
+                            watchMs.divide(BigDecimal.valueOf(1000), 3, java.math.RoundingMode.HALF_UP));
+                }
+            }
+        }
+
+        if (raws.isEmpty()) {
             return new PostInsightsCapture(null, null, Map.of());
         }
-        Map<String, BigDecimal> insights = insightsByName(InsightsHttpSupport.tree(body));
-        Map<String, BigDecimal> metrics = new LinkedHashMap<>();
-        put(metrics, "ig_post_reposts", insights.get("reposts"));
-        put(metrics, "ig_post_profile_visits", insights.get("profile_visits"));
-        BigDecimal watchMs = insights.get("ig_reels_avg_watch_time");
-        if (watchMs != null) {
-            metrics.put("ig_reels_avg_watch_time",
-                    watchMs.divide(BigDecimal.valueOf(1000), 3, java.math.RoundingMode.HALF_UP));
-        }
-        return new PostInsightsCapture("GET /" + V + "/{ig-media-id}/insights (extras v1.1)", body, metrics);
+        return new PostInsightsCapture("GET /" + V + "/{ig-media-id}/insights (extras v1.1)",
+                combineAll(raws), metrics);
     }
 
     /**

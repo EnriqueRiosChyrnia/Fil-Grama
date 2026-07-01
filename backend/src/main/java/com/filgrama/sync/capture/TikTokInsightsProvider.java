@@ -2,6 +2,7 @@ package com.filgrama.sync.capture;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -59,7 +60,9 @@ public class TikTokInsightsProvider implements InsightsProvider {
     }
 
     @Override
-    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken) {
+    public AccountCapture fetchAccountInsights(SocialAccount account, String accessToken,
+            LocalDate windowSince, LocalDate windowUntil) {
+        // TikTok Display API: stats de {@code user.info} son foto actual, no total_value de rango → sin ventana.
         String body = InsightsHttpSupport.get(http,
                 "/v2/user/info/?fields=follower_count,likes_count,video_count", accessToken).getBody();
         JsonNode user = checked(body).path("data").path("user");
