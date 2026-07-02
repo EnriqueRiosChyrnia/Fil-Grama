@@ -43,6 +43,7 @@ class ReportServiceTest {
 
     private ReportRepository repo;
     private ReportDataAssembler assembler;
+    private ReportNarrativeService narrativeService;
     private MarkdownRenderer markdown;
     private PdfRenderer pdf;
     private StoragePort storage;
@@ -53,11 +54,14 @@ class ReportServiceTest {
     void setUp() {
         repo = mock(ReportRepository.class);
         assembler = mock(ReportDataAssembler.class);
+        narrativeService = mock(ReportNarrativeService.class);
         markdown = mock(MarkdownRenderer.class);
         pdf = mock(PdfRenderer.class);
         storage = mock(StoragePort.class);
         clients = mock(ClientRepository.class);
-        service = new ReportService(repo, assembler, markdown, pdf, storage, clients);
+        // Sin narrativa persistida (comportamiento por defecto): el reporte sale igual que hoy.
+        when(narrativeService.findNarrative(any(), any(), any())).thenReturn(null);
+        service = new ReportService(repo, assembler, narrativeService, markdown, pdf, storage, clients);
 
         // save() asigna id la primera vez y devuelve la misma entidad (como Spring Data).
         when(repo.save(any(Report.class))).thenAnswer(inv -> {

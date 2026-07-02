@@ -19,6 +19,29 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  # Servidor MCP embebido (spec/08 §Decisiones T5). Transporte Streamable HTTP en /mcp, dentro de
+  # la misma app Spring Boot: hoy accesible por el tunel cloudflared, manana en el VPS sin cambios.
+  # El endpoint /mcp NO esta en la whitelist de SecurityConfig -> exige JWT Bearer (401 sin token).
+  # El scope de cada tool se deriva del token EN EL BACKEND (ver McpSecurityContextConfig + ClientAccessService).
+  ai:
+    mcp:
+      server:
+        protocol: STREAMABLE     # Streamable HTTP (no SSE legacy, no STATELESS)
+        type: SYNC               # tools sincronas sobre servicios @Transactional existentes
+        name: filgrama-mcp
+        version: 0.1.0
+        instructions: >
+          Datos de reportes de redes sociales de los clientes de la agencia Fil-Grama. Herramientas
+          de solo lectura para consultar KPIs, series, demografia, comparaciones y rendimiento por
+          horario; y una unica de escritura (save_report_narrative) para guardar el "Analisis del
+          mes" redactado. Cada llamada queda acotada al alcance del usuario del token: un empleado
+          solo ve sus clientes asignados; un admin ve todos. Los numeros los provee la app: no
+          inventes cifras, redacta a partir de lo que devuelven las tools.
+        capabilities:
+          tool: true
+        streamable-http:
+          mcp-endpoint: /mcp
+
 # Cifrado de tokens OAuth en reposo (Track C / TokenCipher).
 # Default DEV estable; en PROD setear SECURITY_TOKEN_ENCRYPTION_KEY (openssl rand -base64 32).
 security:

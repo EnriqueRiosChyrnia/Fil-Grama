@@ -21,7 +21,24 @@
         <java.version>25</java.version>
         <!-- JDK 23+ desactiva el annotation processing implicito; Lombok requiere proc=full -->
         <maven.compiler.proc>full</maven.compiler.proc>
+        <!-- Spring AI: linea 2.0.x es la que soporta Boot 4 / Spring Framework 7 (la 1.x es para
+             Boot 3). Verificado contra Maven Central (repo1): 2.0.0 es GA, release 2026-06-12. -->
+        <spring-ai.version>2.0.0</spring-ai.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- BOM de Spring AI: fija versiones coherentes del starter MCP y del MCP Java SDK
+                 (transitivo io.modelcontextprotocol.sdk 2.0.0 + Jackson 3 mcp-json-jackson3). -->
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -51,6 +68,16 @@
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>3.0.3</version>
+        </dependency>
+
+        <!-- Servidor MCP embebido (spec/08 §Decisiones T5): tools de solo lectura del reporte +
+             narrativa, expuestas a Claude por Streamable HTTP en /mcp bajo la cadena JWT existente.
+             El starter WebMVC trae la autoconfig del server, el scanner de @McpTool y el transporte
+             Streamable HTTP (WebMvcStreamableServerTransportProvider). Version via spring-ai-bom.
+             Es server-only: NO requiere API key ni ChatModel. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
         </dependency>
 
         <!-- Migraciones de base de datos -->
