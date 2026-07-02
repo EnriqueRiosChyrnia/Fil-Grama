@@ -39,11 +39,15 @@ import {
   formatByUnit,
   formatCompact,
   formatDate,
+  formatNumber,
   formatPercent,
   WIDE_RANGES,
   type RangeDays,
 } from '../../lib/format';
 import { downloadReport } from './reportDownload';
+import { DemographicsBlock } from './blocks/DemographicsBlock';
+import { ContentBlock } from './blocks/ContentBlock';
+import { InteractionsByActionBlock } from './blocks/InteractionsByActionBlock';
 
 /**
  * Reporte = vista en pantalla + exportar (reconstrucción sobre `:preview`).
@@ -589,7 +593,7 @@ function ReportDocument({
           <SectionTitle>KPIs por red · variación vs. período anterior</SectionTitle>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {kpis.map((k) => (
-              <NetworkKpiCard key={k.platform} kpi={k} />
+              <NetworkKpiCard key={k.platform} kpi={k} showDetail={!isSummary} />
             ))}
           </div>
         </div>
@@ -679,7 +683,7 @@ function ReportDocument({
   );
 }
 
-function NetworkKpiCard({ kpi }: { kpi: PlatformKpis }) {
+function NetworkKpiCard({ kpi, showDetail }: { kpi: PlatformKpis; showDetail: boolean }) {
   const metrics = kpi.metrics ?? [];
   return (
     <div style={{ border: '1px solid var(--fg-border)', borderRadius: 12, padding: '16px 18px' }}>
@@ -733,6 +737,19 @@ function NetworkKpiCard({ kpi }: { kpi: PlatformKpis }) {
           )}
         </div>
       )}
+
+      {/* bloques v1.1 (reporte mensual completo): degradación elegante, cada uno se oculta si no hay dato */}
+      {showDetail && (
+        <>
+          <DemographicsBlock data={kpi.demographics} />
+          <ContentBlock
+            contentTypes={kpi.viewsByContentType}
+            split={kpi.viewsFollowerSplit}
+            profileActivity={kpi.profileActivity}
+          />
+          <InteractionsByActionBlock items={kpi.interactionsByAction} />
+        </>
+      )}
     </div>
   );
 }
@@ -746,6 +763,11 @@ function PostTile({ post, compact = false }: { post: ReportPost; compact?: boole
         <div style={{ fontSize: compact ? 12 : 14, fontWeight: 600, color: 'var(--fg-text-primary)', marginTop: 4 }}>
           {postMetric(post)}
         </div>
+        {post.watchTimeSeconds != null && (
+          <div style={{ fontSize: 11, color: 'var(--fg-text-tertiary)', marginTop: 3 }}>
+            {`${formatNumber(Math.round(post.watchTimeSeconds))} s promedio`}
+          </div>
+        )}
       </div>
     </div>
   );
