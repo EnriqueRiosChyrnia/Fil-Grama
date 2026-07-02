@@ -86,6 +86,22 @@ sobre sus datos de rendimiento si se etiqueta o se le entrega.
 - Solo habría costo separado si se **automatizara** (Agent SDK / `claude -p` / scripts), que saldría
   del crédito programático del plan ($200/mes en Max 20x). No es el caso.
 
+## Decisiones cerradas para T5 (1-jul-2026)
+
+- **Transporte/arquitectura: MCP embebido en el backend Spring Boot** (Streamable HTTP, endpoint
+  `/mcp`). Un solo deploy: hoy accesible por el túnel cloudflared (`api.fil-grama.com`), mañana en el
+  VPS sin cambios. Desde Claude Code: `claude mcp add --transport http`. Desde Claude Desktop/Cowork:
+  conector remoto (header Bearer).
+- **Auth y scope:** el endpoint MCP exige el **JWT existente** (Bearer). Cada tool filtra por el
+  scope del usuario del token **en el backend** (empleado asignado → solo sus clientes; admin →
+  todo). Nunca filtrar por prompt. Alinea con [[11-escalabilidad-saas]] §aislamiento.
+- **Lista FINAL de tools (v1 del MCP):** `list_clients`, `get_client_report_data(client_id, period)`,
+  `get_metric_series(account_id, metric, from, to)`, `get_audience_demographics(client_id, period)`,
+  `compare_periods(client_id, period_a, period_b)`, `get_posting_performance(client_id, by)`,
+  `save_report_narrative(client_id, period, markdown, model)` — esta última es la ÚNICA de escritura.
+- **Narrativa en el reporte:** los 4 campos `narrative_*` del modelo (arriba) entran con T5; pantalla
+  y PDF muestran "Análisis del mes" solo si `narrative_md` existe (sin IA, el reporte sale igual).
+
 ## Roadmap
 
 - **v1:** dejar listo el `ReportData` (el backend ya lo produce para el reporte normal) y el campo
