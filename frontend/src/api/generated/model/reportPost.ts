@@ -20,4 +20,5 @@ export interface ReportPost {
   metricKey?: string;
   metricName?: string;
   metricValue?: number;
+  watchTimeSeconds?: number;
 }

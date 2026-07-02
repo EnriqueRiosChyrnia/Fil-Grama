@@ -4,9 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { ConnectedAccount } from './connectedAccount';
 
 export interface PublicLinkInfo {
   clientName?: string;
   platform?: string;
   expiresAt?: string;
+  connectedAccounts?: ConnectedAccount[];
 }

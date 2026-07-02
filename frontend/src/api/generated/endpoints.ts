@@ -33,6 +33,7 @@ import type {
   CreateClientRequest,
   CreateConnectLinkRequest,
   CreateUserRequest,
+  DataDeletionResponse,
   GenerateReportRequest,
   GetAccountsIdPostsParams,
   GetClientsClientIdSummaryParams,
@@ -52,6 +53,8 @@ import type {
   PostAuthLogin200,
   PostAuthRefresh200,
   PostClientsClientIdAccountsConnectPlatformParams,
+  PostMetaDataDeletionParams,
+  PostMetaDeauthorizeParams,
   PostReportResponse,
   PreviewReportRequest,
   PriorityClientRequest,
@@ -60,6 +63,8 @@ import type {
   RefreshRequest,
   ReportData,
   ReportResource,
+  SelectionRequest,
+  SelectionResponse,
   SummaryResponse,
   SyncRunDetailResponse,
   SyncRunTriggerResponse,
@@ -876,6 +881,227 @@ export function usePostPostsIdMetricsReport<TData = Awaited<ReturnType<typeof po
 
 
 
+export type getOauthSelectSelectionTokenResponse200 = {
+  data: SelectionResponse
+  status: 200
+}
+
+export type getOauthSelectSelectionTokenResponseSuccess = (getOauthSelectSelectionTokenResponse200) & {
+  headers: Headers;
+};
+;
+
+export type getOauthSelectSelectionTokenResponse = (getOauthSelectSelectionTokenResponseSuccess)
+
+export const getGetOauthSelectSelectionTokenUrl = (selectionToken: string,) => {
+
+
+
+
+  return `/api/v1/oauth/select/${selectionToken}`
+}
+
+export const getOauthSelectSelectionToken = async (selectionToken: string, options?: RequestInit): Promise<getOauthSelectSelectionTokenResponse> => {
+
+  return orvalFetch<getOauthSelectSelectionTokenResponse>(getGetOauthSelectSelectionTokenUrl(selectionToken),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOauthSelectSelectionTokenQueryKey = (selectionToken: string,) => {
+    return [
+    `/api/v1/oauth/select/${selectionToken}`
+    ] as const;
+    }
+
+
+export const getGetOauthSelectSelectionTokenQueryOptions = <TData = Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError = unknown>(selectionToken: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOauthSelectSelectionTokenQueryKey(selectionToken);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>> = ({ signal }) => getOauthSelectSelectionToken(selectionToken, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: selectionToken !== null && selectionToken !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetOauthSelectSelectionTokenQueryResult = NonNullable<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>>
+export type GetOauthSelectSelectionTokenQueryError = unknown
+
+
+export function useGetOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOauthSelectSelectionToken>>,
+          TError,
+          Awaited<ReturnType<typeof getOauthSelectSelectionToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getOauthSelectSelectionToken>>,
+          TError,
+          Awaited<ReturnType<typeof getOauthSelectSelectionToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetOauthSelectSelectionTokenQueryOptions(selectionToken,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postOauthSelectSelectionTokenResponse200 = {
+  data: AccountResponse[]
+  status: 200
+}
+
+export type postOauthSelectSelectionTokenResponseSuccess = (postOauthSelectSelectionTokenResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postOauthSelectSelectionTokenResponse = (postOauthSelectSelectionTokenResponseSuccess)
+
+export const getPostOauthSelectSelectionTokenUrl = (selectionToken: string,) => {
+
+
+
+
+  return `/api/v1/oauth/select/${selectionToken}`
+}
+
+export const postOauthSelectSelectionToken = async (selectionToken: string,
+    selectionRequest: SelectionRequest, options?: RequestInit): Promise<postOauthSelectSelectionTokenResponse> => {
+
+  return orvalFetch<postOauthSelectSelectionTokenResponse>(getPostOauthSelectSelectionTokenUrl(selectionToken),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(selectionRequest)
+  }
+);}
+
+
+
+
+
+export const getPostOauthSelectSelectionTokenQueryKey = (selectionToken: string,
+    selectionRequest?: SelectionRequest,) => {
+    return [
+    'POST', `/api/v1/oauth/select/${selectionToken}`, selectionRequest
+    ] as const;
+    }
+
+
+export const getPostOauthSelectSelectionTokenQueryOptions = <TData = Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError = unknown>(selectionToken: string,
+    selectionRequest: SelectionRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostOauthSelectSelectionTokenQueryKey(selectionToken,selectionRequest);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>> = ({ signal }) => postOauthSelectSelectionToken(selectionToken,selectionRequest, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: selectionToken !== null && selectionToken !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostOauthSelectSelectionTokenQueryResult = NonNullable<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>>
+export type PostOauthSelectSelectionTokenQueryError = unknown
+
+
+export function usePostOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string,
+    selectionRequest: SelectionRequest, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postOauthSelectSelectionToken>>,
+          TError,
+          Awaited<ReturnType<typeof postOauthSelectSelectionToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string,
+    selectionRequest: SelectionRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postOauthSelectSelectionToken>>,
+          TError,
+          Awaited<ReturnType<typeof postOauthSelectSelectionToken>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string,
+    selectionRequest: SelectionRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostOauthSelectSelectionToken<TData = Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError = unknown>(
+ selectionToken: string,
+    selectionRequest: SelectionRequest, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postOauthSelectSelectionToken>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostOauthSelectSelectionTokenQueryOptions(selectionToken,selectionRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
 export type postMetricsBatchReportResponse200 = {
   data: BatchReportResponse
   status: 200
@@ -978,6 +1204,234 @@ export function usePostMetricsBatchReport<TData = Awaited<ReturnType<typeof post
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getPostMetricsBatchReportQueryOptions(batchReportRequest,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postMetaDeauthorizeResponse200 = {
+  data: void
+  status: 200
+}
+
+export type postMetaDeauthorizeResponseSuccess = (postMetaDeauthorizeResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postMetaDeauthorizeResponse = (postMetaDeauthorizeResponseSuccess)
+
+export const getPostMetaDeauthorizeUrl = (params?: PostMetaDeauthorizeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/meta/deauthorize?${stringifiedParams}` : `/api/v1/meta/deauthorize`
+}
+
+export const postMetaDeauthorize = async (params?: PostMetaDeauthorizeParams, options?: RequestInit): Promise<postMetaDeauthorizeResponse> => {
+
+  return orvalFetch<postMetaDeauthorizeResponse>(getPostMetaDeauthorizeUrl(params),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPostMetaDeauthorizeQueryKey = (params?: PostMetaDeauthorizeParams,) => {
+    return [
+    'POST', `/api/v1/meta/deauthorize`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getPostMetaDeauthorizeQueryOptions = <TData = Awaited<ReturnType<typeof postMetaDeauthorize>>, TError = unknown>(params?: PostMetaDeauthorizeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostMetaDeauthorizeQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postMetaDeauthorize>>> = ({ signal }) => postMetaDeauthorize(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostMetaDeauthorizeQueryResult = NonNullable<Awaited<ReturnType<typeof postMetaDeauthorize>>>
+export type PostMetaDeauthorizeQueryError = unknown
+
+
+export function usePostMetaDeauthorize<TData = Awaited<ReturnType<typeof postMetaDeauthorize>>, TError = unknown>(
+ params: undefined |  PostMetaDeauthorizeParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetaDeauthorize>>,
+          TError,
+          Awaited<ReturnType<typeof postMetaDeauthorize>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetaDeauthorize<TData = Awaited<ReturnType<typeof postMetaDeauthorize>>, TError = unknown>(
+ params?: PostMetaDeauthorizeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetaDeauthorize>>,
+          TError,
+          Awaited<ReturnType<typeof postMetaDeauthorize>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetaDeauthorize<TData = Awaited<ReturnType<typeof postMetaDeauthorize>>, TError = unknown>(
+ params?: PostMetaDeauthorizeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostMetaDeauthorize<TData = Awaited<ReturnType<typeof postMetaDeauthorize>>, TError = unknown>(
+ params?: PostMetaDeauthorizeParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDeauthorize>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostMetaDeauthorizeQueryOptions(params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type postMetaDataDeletionResponse200 = {
+  data: DataDeletionResponse
+  status: 200
+}
+
+export type postMetaDataDeletionResponseSuccess = (postMetaDataDeletionResponse200) & {
+  headers: Headers;
+};
+;
+
+export type postMetaDataDeletionResponse = (postMetaDataDeletionResponseSuccess)
+
+export const getPostMetaDataDeletionUrl = (params?: PostMetaDataDeletionParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/meta/data-deletion?${stringifiedParams}` : `/api/v1/meta/data-deletion`
+}
+
+export const postMetaDataDeletion = async (params?: PostMetaDataDeletionParams, options?: RequestInit): Promise<postMetaDataDeletionResponse> => {
+
+  return orvalFetch<postMetaDataDeletionResponse>(getPostMetaDataDeletionUrl(params),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPostMetaDataDeletionQueryKey = (params?: PostMetaDataDeletionParams,) => {
+    return [
+    'POST', `/api/v1/meta/data-deletion`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getPostMetaDataDeletionQueryOptions = <TData = Awaited<ReturnType<typeof postMetaDataDeletion>>, TError = unknown>(params?: PostMetaDataDeletionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getPostMetaDataDeletionQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof postMetaDataDeletion>>> = ({ signal }) => postMetaDataDeletion(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type PostMetaDataDeletionQueryResult = NonNullable<Awaited<ReturnType<typeof postMetaDataDeletion>>>
+export type PostMetaDataDeletionQueryError = unknown
+
+
+export function usePostMetaDataDeletion<TData = Awaited<ReturnType<typeof postMetaDataDeletion>>, TError = unknown>(
+ params: undefined |  PostMetaDataDeletionParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetaDataDeletion>>,
+          TError,
+          Awaited<ReturnType<typeof postMetaDataDeletion>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetaDataDeletion<TData = Awaited<ReturnType<typeof postMetaDataDeletion>>, TError = unknown>(
+ params?: PostMetaDataDeletionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof postMetaDataDeletion>>,
+          TError,
+          Awaited<ReturnType<typeof postMetaDataDeletion>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function usePostMetaDataDeletion<TData = Awaited<ReturnType<typeof postMetaDataDeletion>>, TError = unknown>(
+ params?: PostMetaDataDeletionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function usePostMetaDataDeletion<TData = Awaited<ReturnType<typeof postMetaDataDeletion>>, TError = unknown>(
+ params?: PostMetaDataDeletionParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof postMetaDataDeletion>>, TError, TData>>, request?: SecondParameter<typeof orvalFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getPostMetaDataDeletionQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

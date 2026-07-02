@@ -4,8 +4,12 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { ContentTypeShare } from './contentTypeShare';
+import type { Demographics } from './demographics';
 import type { Kpi } from './kpi';
+import type { ProfileActivity } from './profileActivity';
 import type { ReachEvolution } from './reachEvolution';
+import type { ViewsFollowerSplit } from './viewsFollowerSplit';
 
 export interface PlatformKpis {
   platform?: string;
@@ -13,4 +17,9 @@ export interface PlatformKpis {
   engagementRate?: number;
   followerGrowth?: number;
   reach?: ReachEvolution;
+  demographics?: Demographics;
+  viewsFollowerSplit?: ViewsFollowerSplit;
+  interactionsByAction?: Kpi[];
+  viewsByContentType?: ContentTypeShare[];
+  profileActivity?: ProfileActivity;
 }
