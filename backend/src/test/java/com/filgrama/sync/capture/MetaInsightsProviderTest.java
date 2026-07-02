@@ -154,6 +154,67 @@ class MetaInsightsProviderTest {
     }
 
     @Test
+    void igPostsCarouselWithoutThumbnailResolvesFirstChildViaChildrenEdge() {
+        MetaInsightsProvider p = provider();
+        server.expect(requestTo(containsString("/v21.0/IG123/media")))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"id":"M3","media_type":"CAROUSEL_ALBUM","media_product_type":"FEED",
+                           "permalink":"https://ig/M3","timestamp":"2026-06-04T09:00:00+0000"}
+                        ]}""", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(allOf(containsString("/v21.0/M3/children"),
+                        containsString("fields=media_url"), containsString("limit=1"))))
+                .andRespond(withSuccess("""
+                        {"data":[{"id":"C1","media_url":"https://cdn/child1.jpg"}]}""",
+                        MediaType.APPLICATION_JSON));
+
+        PostsListCapture cap = p.fetchPosts(account(Platform.INSTAGRAM, "IG123"), TOKEN);
+
+        assertThat(cap.posts()).hasSize(1);
+        assertThat(cap.posts().get(0).postType()).isEqualTo(PostType.CAROUSEL);
+        assertThat(cap.posts().get(0).remoteThumbnailUrl()).isEqualTo("https://cdn/child1.jpg");
+        server.verify();
+    }
+
+    @Test
+    void igPostsImageWithoutThumbnailFallsBackToMediaUrl() {
+        MetaInsightsProvider p = provider();
+        server.expect(requestTo(containsString("/v21.0/IG123/media")))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"id":"M4","media_type":"IMAGE","media_product_type":"FEED",
+                           "permalink":"https://ig/M4","media_url":"https://cdn/m4.jpg",
+                           "timestamp":"2026-06-05T09:00:00+0000"}
+                        ]}""", MediaType.APPLICATION_JSON));
+
+        PostsListCapture cap = p.fetchPosts(account(Platform.INSTAGRAM, "IG123"), TOKEN);
+
+        assertThat(cap.posts()).hasSize(1);
+        assertThat(cap.posts().get(0).remoteThumbnailUrl()).isEqualTo("https://cdn/m4.jpg");
+        server.verify();
+    }
+
+    @Test
+    void igPostsCarouselChildrenEdgeFailureLeavesThumbnailNullWithoutBreakingRun() {
+        MetaInsightsProvider p = provider();
+        server.expect(requestTo(containsString("/v21.0/IG123/media")))
+                .andRespond(withSuccess("""
+                        {"data":[
+                          {"id":"M5","media_type":"CAROUSEL_ALBUM","media_product_type":"FEED",
+                           "permalink":"https://ig/M5","timestamp":"2026-06-06T09:00:00+0000"}
+                        ]}""", MediaType.APPLICATION_JSON));
+        server.expect(requestTo(containsString("/v21.0/M5/children")))
+                .andRespond(withServerError());
+
+        PostsListCapture cap = p.fetchPosts(account(Platform.INSTAGRAM, "IG123"), TOKEN);
+
+        assertThat(cap.posts()).hasSize(1);
+        assertThat(cap.posts().get(0).postType()).isEqualTo(PostType.CAROUSEL);
+        assertThat(cap.posts().get(0).remoteThumbnailUrl()).isNull();
+        server.verify();
+    }
+
+    @Test
     void igPostInsightsCombinesNodeFieldsAndInsights() {
         MetaInsightsProvider p = provider();
         server.expect(requestTo(containsString("/v21.0/M1?fields=like_count")))

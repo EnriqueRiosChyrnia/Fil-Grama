@@ -175,17 +175,56 @@ public class MetaInsightsProvider implements InsightsProvider {
 
         List<RawPost> posts = new ArrayList<>();
         for (JsonNode item : InsightsHttpSupport.tree(body).path("data")) {
-            posts.add(ig ? igPost(item) : fbPost(item));
+            posts.add(ig ? igPost(item, accessToken) : fbPost(item));
         }
         return new PostsListCapture(ig ? "GET /" + V + "/{ig-user-id}/media"
                 : "GET /" + V + "/{page-id}/posts", body, posts);
     }
 
-    private RawPost igPost(JsonNode item) {
+    private RawPost igPost(JsonNode item, String token) {
+        String mediaUrl = text(item, "media_url");
+        PostType type = igPostType(item);
         return new RawPost(
-                text(item, "id"), igPostType(item), text(item, "permalink"), text(item, "caption"),
-                text(item, "media_url"), text(item, "thumbnail_url"),
+                text(item, "id"), type, text(item, "permalink"), text(item, "caption"),
+                mediaUrl, igThumbnailUrl(item, mediaUrl, type, token),
                 parseTime(text(item, "timestamp")), false, null);
+    }
+
+    /**
+     * Resuelve la URL de miniatura de un post IG. IG solo devuelve {@code thumbnail_url} para
+     * VIDEO/Reels; para IMAGE y CAROUSEL_ALBUM viene vacío. Fallback: {@code media_url} (imagen del
+     * post) y, solo para carruseles sin ninguno de los dos, una llamada aparte best-effort al edge
+     * {@code /{media-id}/children} por el {@code media_url} del primer hijo (el parent no lo trae; no
+     * se puede pedir como {@code children{media_url}} en el fields del listado porque las llaves rompen
+     * el URI template de {@link InsightsHttpSupport#get}).
+     */
+    private String igThumbnailUrl(JsonNode item, String mediaUrl, PostType type, String token) {
+        String thumb = text(item, "thumbnail_url");
+        if (thumb != null && !thumb.isBlank()) {
+            return thumb;
+        }
+        if (mediaUrl != null && !mediaUrl.isBlank()) {
+            return mediaUrl;
+        }
+        if (type != PostType.CAROUSEL) {
+            return null;
+        }
+        String id = text(item, "id");
+        if (id == null) {
+            return null;
+        }
+        String childrenBody = graphGetQuietly("/" + enc(id) + "/children?fields=media_url&limit=1"
+                + "&access_token=" + enc(token));
+        if (childrenBody == null) {
+            return null;
+        }
+        for (JsonNode child : InsightsHttpSupport.tree(childrenBody).path("data")) {
+            String childUrl = text(child, "media_url");
+            if (childUrl != null && !childUrl.isBlank()) {
+                return childUrl;
+            }
+        }
+        return null;
     }
 
     private RawPost fbPost(JsonNode item) {
