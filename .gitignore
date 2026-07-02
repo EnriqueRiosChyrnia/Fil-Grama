@@ -19,3 +19,6 @@ frontend/.next/
 /prompts-pantallas-pendientes.md
 /prompts-pantallas-pendientes-v2.md
 /backend/ESTADO-INTEGRACION.md
+
+# Config local de agentes
+backend/.claude/

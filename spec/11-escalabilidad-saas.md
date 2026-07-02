@@ -126,6 +126,23 @@ lógica con purga diferida vs física inmediata; (3) qué pasa con reportes ya g
 eliminado; (4) permisos (¿solo admin?). Relacionado: ciclo de vida de cuenta (`REMOVED`) en
 [[09-flujo-oauth]].
 
+## Adición v1.1 (futuro) — tema del reporte por cliente (paleta + tipografías)
+
+> Idea de Enrique (1-jul-2026). Hoy el reporte automático sale con la **marca Fil-Grama (azules/gris)** por
+> defecto — está bien así para v1. A futuro: permitir **personalizar el reporte por cliente** con su propia
+> **paleta de colores** y **tipografías** (títulos + cuerpo), para que cada reporte se vea con la marca del
+> cliente (como el que hicimos a mano para Molino Don Alexis, que era amarillo + Gill Sans/Palatino).
+
+**Idea de implementación (a acordar):**
+- **Modelo:** un "tema" por cliente (`client_themes` o JSON en `clients`): `primary_color` (+ derivados
+  50/20%), `text_color`, `heading_font`, `body_font`, opcional logo. El `PdfRenderer` toma el tema del
+  cliente; si no hay, usa el default Fil-Grama.
+- **Carga de fuentes:** subir/registrar las tipografías del cliente (ojo con archivos rotos: validar el cmap,
+  como pasó con la Palatino de Molino → hubo que usar el clon Pagella). Fallback a fuentes seguras.
+- **Vía MCP (alineado a [[08-ia-reportes]]):** Claude podría **elegir/guardar** paleta y tipografías del
+  reporte por cliente (`save_report_theme(client_id, palette, fonts)`), o respetar el tema ya definido.
+- **Default:** marca Fil-Grama. La personalización es opt-in por cliente.
+
 ## Adición v1.1 (futuro lejano) — bandeja de mensajería centralizada
 
 > Idea de Enrique (30-jun-2026): después de auto-publicación + calendario, sumar una **bandeja unificada**
