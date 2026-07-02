@@ -436,7 +436,8 @@ public class PdfRenderer {
             return;
         }
         sb.append("<div class=\"section\"><div class=\"phead\"><h2>Análisis del mes</h2></div>");
-        sb.append("<div class=\"narrative\">").append(esc(data.narrativeMd())).append("</div></div>");
+        // Markdown → XHTML mínimo (párrafos/listas/énfasis), sin dependencia nueva (spec/08).
+        sb.append("<div class=\"narrative\">").append(NarrativeMarkdown.toXhtml(data.narrativeMd())).append("</div></div>");
     }
 
     // ============================ CSS (sin '>' ni '&' para no romper el XHTML) ============================
@@ -516,6 +517,10 @@ public class PdfRenderer {
                 .date { font-size: 9px; color: {{gray500}}; margin-top: 2px; }
                 .cap { font-size: 9px; color: {{gray500}}; }
                 .narrative { font-size: 10.5px; line-height: 1.5; color: {{gray700}}; }
+                .narrative p { margin: 0 0 3mm; }
+                .narrative h4.nh { font-size: 11px; font-weight: 700; color: {{gray900}}; margin: 4mm 0 1mm; }
+                .narrative ul.nlist { margin: 0 0 3mm; padding-left: 5mm; }
+                .narrative ul.nlist li { margin-bottom: 1mm; }
                 """;
         return template
                 .replace("{{font}}", FONT_FAMILY)

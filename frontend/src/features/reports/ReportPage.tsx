@@ -773,16 +773,41 @@ function PostTile({ post, compact = false }: { post: ReportPost; compact?: boole
   );
 }
 
-/** Render mínimo de Markdown sin dependencias (títulos `#` + párrafos). */
+/** Énfasis en línea sin dependencias: `**negrita**`, `*cursiva*` / `_cursiva_`. */
+function renderInline(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const re = /\*\*(.+?)\*\*|\*(.+?)\*|_(.+?)_/g;
+  let last = 0;
+  let key = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (m[1] !== undefined) nodes.push(<strong key={key++}>{m[1]}</strong>);
+    else nodes.push(<em key={key++}>{m[2] ?? m[3]}</em>);
+    last = re.lastIndex;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+/** Render mínimo de Markdown sin dependencias (títulos `#`, listas `-`, negrita/cursiva, párrafos). */
 function MarkdownBlock({ md }: { md: string }) {
   const blocks = md.split(/\n\s*\n/).map((b) => b.trim()).filter(Boolean);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {blocks.map((b, i) => {
-        if (b.startsWith('### ')) return <h4 key={i} style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{b.slice(4)}</h4>;
-        if (b.startsWith('## ')) return <h3 key={i} style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{b.slice(3)}</h3>;
-        if (b.startsWith('# ')) return <h3 key={i} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{b.slice(2)}</h3>;
-        return <p key={i} style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--fg-text-secondary)', whiteSpace: 'pre-wrap' }}>{b}</p>;
+        if (b.startsWith('### ')) return <h4 key={i} style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{renderInline(b.slice(4))}</h4>;
+        if (b.startsWith('## ')) return <h3 key={i} style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{renderInline(b.slice(3))}</h3>;
+        if (b.startsWith('# ')) return <h3 key={i} style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--fg-text-primary)' }}>{renderInline(b.slice(2))}</h3>;
+        const lines = b.split('\n');
+        if (lines.every((l) => /^[-*]\s+/.test(l.trim()))) {
+          return (
+            <ul key={i} style={{ margin: 0, paddingLeft: 20, fontSize: 13.5, lineHeight: 1.6, color: 'var(--fg-text-secondary)' }}>
+              {lines.map((l, j) => <li key={j}>{renderInline(l.trim().replace(/^[-*]\s+/, ''))}</li>)}
+            </ul>
+          );
+        }
+        return <p key={i} style={{ margin: 0, fontSize: 13.5, lineHeight: 1.6, color: 'var(--fg-text-secondary)', whiteSpace: 'pre-wrap' }}>{renderInline(b)}</p>;
       })}
     </div>
   );

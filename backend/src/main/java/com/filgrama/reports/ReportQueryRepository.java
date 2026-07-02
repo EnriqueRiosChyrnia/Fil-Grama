@@ -55,6 +55,14 @@ public class ReportQueryRepository {
     }
 
     /**
+     * Un post con su reach y su engagement (últimos valores capturados) para el análisis de "mejores
+     * horas/días" del MCP (spec/08). El bucketeo por hora/día en la timezone del cliente se hace en
+     * Java desde {@code publishedAt} (fuente única, ver [[02-modelo-de-datos]]).
+     */
+    public record PostPerfRow(Long id, String platform, Instant publishedAt, BigDecimal reach, BigDecimal engagement) {
+    }
+
+    /**
      * (red, metric_key) que TIENEN al menos un snapshot de cuenta del cliente en {@code [from, to]}.
      * Permite distinguir "período previo ausente" (no aparece la clave → delta {@code null}) de
      * "previo = 0 real" (aparece la clave, aunque el valor sea 0 → delta real). Sin redes ⇒ vacío.
@@ -174,6 +182,44 @@ public class ReportQueryRepository {
         return jdbc.query(sql, params, (rs, n) -> new DemographicRow(
                 rs.getString("platform"), rs.getString("breakdown_type"), rs.getString("breakdown_value"),
                 rs.getBigDecimal("total")));
+    }
+
+    /**
+     * Todos los posts NO efímeros del cliente (toda la historia) con su reach y su engagement (último
+     * valor capturado de cada uno). {@code reachKeys} = claves de alcance/visualizaciones por red;
+     * {@code engagementKeys} = claves de interacción a sumar por post (el post solo tendrá las de su
+     * red). Multi-tenant: filtra por {@code client_id}. El agrupado por hora/día lo hace el llamador.
+     */
+    public List<PostPerfRow> findPostPerformance(Long clientId, Collection<String> reachKeys,
+                                                 Collection<String> engagementKeys) {
+        String sql = """
+                SELECT p.id, p.platform, p.published_at,
+                       (SELECT (ARRAY_AGG(s.value ORDER BY s.captured_at DESC))[1]
+                          FROM post_metric_snapshots s
+                          WHERE s.post_id = p.id AND s.metric_key IN (:reachKeys)) AS reach,
+                       (SELECT COALESCE(SUM(latest.v), 0) FROM (
+                            SELECT (ARRAY_AGG(s.value ORDER BY s.captured_at DESC))[1] AS v
+                            FROM post_metric_snapshots s
+                            WHERE s.post_id = p.id AND s.metric_key IN (:engagementKeys)
+                            GROUP BY s.metric_key) latest) AS engagement
+                FROM posts p
+                WHERE p.client_id = :clientId
+                  AND p.published_at IS NOT NULL
+                  AND COALESCE(p.is_ephemeral, FALSE) = FALSE
+                """;
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("clientId", clientId)
+                .addValue("reachKeys", reachKeys)
+                .addValue("engagementKeys", engagementKeys);
+        return jdbc.query(sql, params, (rs, n) -> {
+            OffsetDateTime published = rs.getObject("published_at", OffsetDateTime.class);
+            return new PostPerfRow(
+                    rs.getLong("id"),
+                    rs.getString("platform"),
+                    published == null ? null : published.toInstant(),
+                    rs.getBigDecimal("reach"),
+                    rs.getBigDecimal("engagement"));
+        });
     }
 
     private static MapSqlParameterSource baseParams(Long clientId, LocalDate from, LocalDate to) {

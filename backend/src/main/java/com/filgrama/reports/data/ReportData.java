@@ -29,9 +29,15 @@ public record ReportData(
         Highlights storyHighlights,
         String narrativeMd) {
 
-    /** El reporte muestra la sección "Análisis del mes" sólo si hay narrativa (en v1, nunca). */
+    /** El reporte muestra la sección "Análisis del mes" sólo si hay narrativa persistida. */
     public boolean hasNarrative() {
         return narrativeMd != null && !narrativeMd.isBlank();
+    }
+
+    /** Copia con la narrativa del período inyectada (la guarda el MCP; ver {@code ReportService}). */
+    public ReportData withNarrative(String markdown) {
+        return new ReportData(reportType, format, client, period, platforms, rankBy, kpis, topPosts,
+                postGroups, storyGroups, postHighlights, storyHighlights, markdown);
     }
 
     public record Client(Long id, String name, String timezone, String plan) {

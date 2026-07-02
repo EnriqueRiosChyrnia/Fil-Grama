@@ -299,6 +299,12 @@ además `postGroups`/`storyGroups`/`postHighlights`/`storyHighlights`. **Rango s
 vacía amable** (`kpis` por red con métricas en cero, `topPosts`/grupos vacíos), NO un error. No
 inventa cifras: dato faltante = `null`. `:preview` no persiste fila ni archivo.
 
+**`narrativeMd` (Análisis del mes).** Desde T5 (MCP, [[08-ia-reportes]]) `narrativeMd` deja de ser
+siempre `null`: si se guardó una narrativa para ese cliente+período (vía la tool MCP
+`save_report_narrative`), tanto `:preview` como el export (PDF/MD) la devuelven/renderizan en la
+sección "Análisis del mes". Sin narrativa guardada sigue siendo `null` y el reporte sale igual que
+antes. El contrato del campo no cambia (sigue siendo `string` nullable); sólo su fuente de valor.
+
 **Deltas sin baseline (sin comparación).** Por KPI, `delta` es la variación vs el período anterior
 (`previousFrom`–`previousTo`). Si el período anterior **no tiene snapshots** para esa métrica (p. ej.
 cuenta recién conectada, sin historia previa), `delta` es **`null`** — NO el valor completo. Lo mismo

@@ -36,6 +36,7 @@ public class ReportService {
 
     private final ReportRepository reportRepository;
     private final ReportDataAssembler assembler;
+    private final ReportNarrativeService narrativeService;
     private final MarkdownRenderer markdownRenderer;
     private final PdfRenderer pdfRenderer;
     private final StoragePort storage;
@@ -43,12 +44,14 @@ public class ReportService {
 
     public ReportService(ReportRepository reportRepository,
                          ReportDataAssembler assembler,
+                         ReportNarrativeService narrativeService,
                          MarkdownRenderer markdownRenderer,
                          PdfRenderer pdfRenderer,
                          StoragePort storage,
                          ClientRepository clientRepository) {
         this.reportRepository = reportRepository;
         this.assembler = assembler;
+        this.narrativeService = narrativeService;
         this.markdownRenderer = markdownRenderer;
         this.pdfRenderer = pdfRenderer;
         this.storage = storage;
@@ -110,7 +113,11 @@ public class ReportService {
                                       LocalDate from, LocalDate to, List<String> platforms,
                                       List<Long> accountIds, String rankBy) {
         try {
-            return assembler.assemble(clientId, reportType, format, from, to, platforms, accountIds, rankBy);
+            ReportData data = assembler.assemble(clientId, reportType, format, from, to, platforms, accountIds, rankBy);
+            // Inyecta la narrativa persistida del período (si la hay). Sin narrativa → sale igual que
+            // hoy (spec/08). Alimenta tanto la vista (:preview) como el export (PDF/MD) sin divergir.
+            String narrative = narrativeService.findNarrative(clientId, from, to);
+            return narrative == null ? data : data.withNarrative(narrative);
         } catch (ApiException e) {
             throw e; // 404/400/422 de validación: contrato, pasan sin tocar.
         } catch (RuntimeException e) {
