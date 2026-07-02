@@ -16,7 +16,7 @@ implementada (Spring Boot 4, en `../backend`). **No** es una app de cara al clie
 - **Diseños alta fidelidad (Claude Design):** https://claude.ai/design/p/4161a4d3-159d-43a0-818d-d958c9e9f02b
   — Claude solo los lee vía el **MCP de Claude Design** (no por fetch). En la sesión: `/design-login` →
   importar el proyecto con el MCP → implementar cruzando con la §8 del HANDOFF. Ver HANDOFF §14.
-- Iterar diseño sin ser experto: `../guia-feedback-diseño.md`.
+- Iterar diseño sin ser experto: `../guia-feedback-diseno.md`.
 
 ## Stack
 

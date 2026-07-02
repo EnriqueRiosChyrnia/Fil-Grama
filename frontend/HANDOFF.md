@@ -242,4 +242,4 @@ Las pantallas ya están diseñadas en **Claude Design**:
 
 ### Cómo trabajar este handoff con Claude (en esta carpeta)
 Abrí Claude en `frontend/` y usá este doc como fuente. Para iterar diseño sin ser experto, mirá
-`../guia-feedback-diseño.md` (recetas de prompts para que Claude actúe como diseñador senior).
+`../guia-feedback-diseno.md` (recetas de prompts para que Claude actúe como diseñador senior).
