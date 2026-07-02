@@ -2,6 +2,10 @@ package com.filgrama.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -24,7 +28,6 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import com.filgrama.domain.AccountMetricSnapshot;
 import com.filgrama.domain.Client;
-import com.filgrama.domain.EmployeeClientPriority;
 import com.filgrama.domain.Post;
 import com.filgrama.domain.PostMetricSnapshot;
 import com.filgrama.domain.SocialAccount;
@@ -35,7 +38,10 @@ import com.filgrama.domain.enums.Role;
 import com.filgrama.error.ApiException;
 import com.filgrama.mcp.dto.ClientView;
 import com.filgrama.mcp.dto.NarrativeSaved;
+import com.filgrama.metrics.service.MetricReportService;
 import com.filgrama.reports.Report;
+import com.filgrama.reports.ReportNarrativeService;
+import com.filgrama.reports.ReportQueryRepository;
 import com.filgrama.reports.ReportRepository;
 import com.filgrama.reports.ReportService;
 import com.filgrama.reports.ReportType;
@@ -44,18 +50,21 @@ import com.filgrama.reports.render.MarkdownRenderer;
 import com.filgrama.reports.render.PdfRenderer;
 import com.filgrama.repository.AccountMetricSnapshotRepository;
 import com.filgrama.repository.ClientRepository;
-import com.filgrama.repository.EmployeeClientPriorityRepository;
 import com.filgrama.repository.PostMetricSnapshotRepository;
 import com.filgrama.repository.PostRepository;
 import com.filgrama.repository.SocialAccountRepository;
 import com.filgrama.repository.UserRepository;
 
 /**
- * Aislamiento de scope de las 7 tools MCP contra un Postgres real (spec/08 §Decisiones T5, spec/11).
- * Regla dura: un EMPLEADO nunca ve un cliente/cuenta que no tiene asignado — <b>por ninguna tool</b>.
- * Cubre además el round-trip de narrativa (guardar → aparece en ReportData/MD/PDF; sin narrativa el
- * reporte sale igual). Llama a {@link McpToolService} directo con la identidad del token (mismo camino
- * que el adaptador {@code @McpTool}), sin depender del protocolo MCP (eso lo cubre el e2e).
+ * Scope de las 7 tools MCP (spec/08 §Decisiones T5). Regla v1: <b>single-tenant</b>, sin modelo de
+ * acceso empleado→cliente — un EMPLEADO ve TODOS los clientes, igual que un ADMIN, igual que la app
+ * REST/UI (spec/02: {@code employee_client_priority} es un favorito informativo, nunca un permiso).
+ * Cubre dos cosas: (a) paridad empleado/admin en todas las tools de lectura contra un Postgres real, y
+ * (b) que {@link ClientAccessService} sigue siendo el único choke point — con un stub que deniega,
+ * <b>cada</b> tool corta con error y no toca ningún otro colaborador. Cubre además el round-trip de
+ * narrativa (guardar → aparece en ReportData/MD/PDF; sin narrativa el reporte sale igual). Llama a
+ * {@link McpToolService} directo con la identidad del token (mismo camino que el adaptador
+ * {@code @McpTool}), sin depender del protocolo MCP (eso lo cubre el e2e).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 class McpToolScopeTest {
@@ -85,9 +94,9 @@ class McpToolScopeTest {
 
     private static boolean seeded;
     private static Long employeeId;
-    private static Long assignedClientId;   // asignado al empleado
-    private static Long foreignClientId;    // NO asignado
-    private static Long foreignAccountId;   // cuenta del cliente ajeno
+    private static Long clientAId;    // cliente cualquiera — el empleado NO tiene favorito acá
+    private static Long clientBId;    // segundo cliente, mismo trato
+    private static Long accountAId;
 
     @Autowired McpToolService tools;
     @Autowired ReportService reportService;
@@ -100,7 +109,6 @@ class McpToolScopeTest {
     @Autowired AccountMetricSnapshotRepository accountSnapshots;
     @Autowired PostRepository posts;
     @Autowired PostMetricSnapshotRepository postSnapshots;
-    @Autowired EmployeeClientPriorityRepository assignments;
 
     @BeforeEach
     void seed() {
@@ -114,29 +122,22 @@ class McpToolScopeTest {
         employee.setRole(Role.EMPLEADO);
         employeeId = users.save(employee).getId();
 
-        assignedClientId = clients.save(newClient("Oh My Bunny")).getId();
-        foreignClientId = clients.save(newClient("Cliente Ajeno")).getId();
+        // Sin fila en employee_client_priority para este empleado: v1 no la usa como permiso
+        // (spec/02), así que el empleado debe ver estos clientes igual que el admin.
+        clientAId = clients.save(newClient("Oh My Bunny")).getId();
+        clientBId = clients.save(newClient("Segundo Cliente")).getId();
 
-        // Asignación del empleado SOLO al cliente asignado (fuente de scope del MCP en v1).
-        EmployeeClientPriority link = new EmployeeClientPriority();
-        link.setUserId(employeeId);
-        link.setClientId(assignedClientId);
-        link.setCreatedAt(Instant.now());
-        assignments.save(link);
+        accountAId = newAccount(clientAId, "ig-a");
+        Long accountBId = newAccount(clientBId, "ig-b");
 
-        Long assignedAccount = newAccount(assignedClientId, "ig-assigned");
-        foreignAccountId = newAccount(foreignClientId, "ig-foreign");
-
-        // Datos del cliente asignado (para el reporte + posting performance).
-        accountSnapshot(assignedClientId, assignedAccount, "ig_reach", "125400", "2026-05-15");
-        accountSnapshot(assignedClientId, assignedAccount, "ig_followers_count", "5200", "2026-05-15");
-        Long reel = newPost(assignedClientId, assignedAccount, PostType.REEL, "reel1",
+        accountSnapshot(clientAId, accountAId, "ig_reach", "125400", "2026-05-15");
+        accountSnapshot(clientAId, accountAId, "ig_followers_count", "5200", "2026-05-15");
+        Long reel = newPost(clientAId, accountAId, PostType.REEL, "reel1",
                 Instant.parse("2026-05-20T13:00:00Z"));
-        postSnapshot(assignedClientId, assignedAccount, reel, "ig_post_reach", "42000", "2026-05-21");
-        postSnapshot(assignedClientId, assignedAccount, reel, "ig_post_total_interactions", "3100", "2026-05-21");
+        postSnapshot(clientAId, accountAId, reel, "ig_post_reach", "42000", "2026-05-21");
+        postSnapshot(clientAId, accountAId, reel, "ig_post_total_interactions", "3100", "2026-05-21");
 
-        // Dato en el cliente ajeno: si el scope fallara, se filtraría.
-        accountSnapshot(foreignClientId, foreignAccountId, "ig_reach", "999999", "2026-05-15");
+        accountSnapshot(clientBId, accountBId, "ig_reach", "999999", "2026-05-15");
 
         seeded = true;
     }
@@ -144,43 +145,64 @@ class McpToolScopeTest {
     // ============================ list_clients ============================
 
     @Test
-    void listClients_employeeSeesOnlyAssigned() {
-        List<ClientView> visible = tools.listClients(employee());
-        assertThat(visible).extracting(ClientView::id).containsExactly(assignedClientId);
-        assertThat(visible).extracting(ClientView::id).doesNotContain(foreignClientId);
+    void listClients_employeeSeesSameAsAdmin() {
+        List<Long> employeeSeen = tools.listClients(employee()).stream().map(ClientView::id).toList();
+        List<Long> adminSeen = tools.listClients(admin()).stream().map(ClientView::id).toList();
+        assertThat(employeeSeen).containsExactlyInAnyOrderElementsOf(adminSeen);
+        assertThat(employeeSeen).contains(clientAId, clientBId);
     }
 
-    @Test
-    void listClients_adminSeesAll() {
-        assertThat(tools.listClients(admin()).stream().map(ClientView::id).toList())
-                .contains(assignedClientId, foreignClientId);
-    }
-
-    // ============================ scope por tool (regla dura) ============================
+    // ============================ paridad empleado/admin (regla v1) ============================
 
     @Test
-    void everyReadTool_deniesEmployeeOnForeignClientOrAccount() {
+    void readTools_employeeSeesSameAsAdmin() {
         McpIdentity emp = employee();
-        assertForbidden(() -> tools.getClientReportData(emp, foreignClientId, "2026-05"));
-        assertForbidden(() -> tools.getAudienceDemographics(emp, foreignClientId, "2026-05"));
-        assertForbidden(() -> tools.comparePeriods(emp, foreignClientId, "2026-04", "2026-05"));
-        assertForbidden(() -> tools.getPostingPerformance(emp, foreignClientId, "hour"));
+        McpIdentity adm = admin();
+
+        assertThat(tools.getClientReportData(emp, clientAId, "2026-05"))
+                .isEqualTo(tools.getClientReportData(adm, clientAId, "2026-05"));
+        assertThat(tools.getAudienceDemographics(emp, clientAId, "2026-05"))
+                .isEqualTo(tools.getAudienceDemographics(adm, clientAId, "2026-05"));
+        assertThat(tools.comparePeriods(emp, clientAId, "2026-04", "2026-05"))
+                .isEqualTo(tools.comparePeriods(adm, clientAId, "2026-04", "2026-05"));
+        assertThat(tools.getPostingPerformance(emp, clientAId, "hour"))
+                .isEqualTo(tools.getPostingPerformance(adm, clientAId, "hour"));
         // get_metric_series se scopea por la cuenta → el cliente al que pertenece.
-        assertForbidden(() -> tools.getMetricSeries(emp, foreignAccountId, "ig_reach", null, null));
+        assertThat(tools.getMetricSeries(emp, accountAId, "ig_reach", null, null))
+                .isEqualTo(tools.getMetricSeries(adm, accountAId, "ig_reach", null, null));
+
+        // También para el segundo cliente, sin ningún favorito/asignación de por medio.
+        assertThat(tools.getClientReportData(emp, clientBId, "2026-05"))
+                .isEqualTo(tools.getClientReportData(adm, clientBId, "2026-05"));
     }
 
-    @Test
-    void saveReportNarrative_deniedForForeignClient_andNothingPersisted() {
-        assertForbidden(() -> tools.saveReportNarrative(
-                employee(), foreignClientId, "2026-05", "intento indebido", "claude-opus-4-8"));
-        assertThat(reports.findFirstByClientIdAndPeriodFromAndPeriodToOrderByCreatedAtDesc(
-                foreignClientId, MAY_FROM, MAY_TO)).isEmpty();
-    }
+    // ============================ choke point (regla dura: se aplica en TODAS las tools) ============================
 
     @Test
-    void employeeCanAccessAssignedClient() {
-        assertThat(tools.getClientReportData(employee(), assignedClientId, "2026-05")).isNotNull();
-        assertThat(tools.getPostingPerformance(employee(), assignedClientId, "weekday")).isNotNull();
+    void chokePoint_appliesToEveryTool_whenAccessServiceDenies() {
+        ClientAccessService denying = mock(ClientAccessService.class);
+        ApiException denied = new ApiException(HttpStatus.FORBIDDEN, "Forbidden", "fuera de scope (stub)");
+        when(denying.listAccessible(any())).thenThrow(denied);
+        when(denying.requireClient(any(), any())).thenThrow(denied);
+        when(denying.requireAccount(any(), any())).thenThrow(denied);
+
+        // Colaboradores mockeados: si el choke point falla en frenar antes de usarlos, la
+        // verifyNoInteractions de abajo lo detecta (ningún dato debería llegar a tocarlos).
+        ReportNarrativeService narrativeSpy = mock(ReportNarrativeService.class);
+        McpToolService gated = new McpToolService(denying, mock(ReportService.class),
+                mock(MetricReportService.class), mock(ReportQueryRepository.class), narrativeSpy);
+
+        McpIdentity emp = employee();
+        assertForbidden(() -> gated.listClients(emp));
+        assertForbidden(() -> gated.getClientReportData(emp, clientAId, "2026-05"));
+        assertForbidden(() -> gated.getAudienceDemographics(emp, clientAId, "2026-05"));
+        assertForbidden(() -> gated.comparePeriods(emp, clientAId, "2026-04", "2026-05"));
+        assertForbidden(() -> gated.getPostingPerformance(emp, clientAId, "hour"));
+        assertForbidden(() -> gated.getMetricSeries(emp, accountAId, "ig_reach", null, null));
+        assertForbidden(() -> gated.saveReportNarrative(
+                emp, clientAId, "2026-05", "intento indebido", "claude-opus-4-8"));
+
+        verifyNoInteractions(narrativeSpy);
     }
 
     // ============================ narrativa (guardar → aparece; sin narrativa, igual) ============================
@@ -196,7 +218,7 @@ class McpToolScopeTest {
                 Recomendación: sostener la frecuencia de reels.""";
 
         NarrativeSaved saved = tools.saveReportNarrative(
-                admin(), assignedClientId, "2026-05", markdown, "claude-opus-4-8");
+                admin(), clientAId, "2026-05", markdown, "claude-opus-4-8");
         assertThat(saved.reportId()).isNotNull();
         assertThat(saved.from()).isEqualTo(MAY_FROM);
         assertThat(saved.to()).isEqualTo(MAY_TO);
@@ -207,7 +229,7 @@ class McpToolScopeTest {
         assertThat(row.getNarrativeGeneratedAt()).isNotNull();
 
         // La vista (:preview) y el export salen del MISMO armado → ambos ven la narrativa.
-        ReportData data = reportService.buildReportData(assignedClientId, ReportType.EXTENDED, null,
+        ReportData data = reportService.buildReportData(clientAId, ReportType.EXTENDED, null,
                 MAY_FROM, MAY_TO, null, null, null);
         assertThat(data.hasNarrative()).isTrue();
         assertThat(data.narrativeMd()).isEqualTo(markdown.strip());
@@ -218,8 +240,8 @@ class McpToolScopeTest {
 
     @Test
     void withoutNarrative_reportComesOutTheSame() {
-        // El cliente ajeno no tiene narrativa → narrativeMd null, sin sección "Análisis del mes".
-        ReportData data = reportService.buildReportData(foreignClientId, ReportType.EXTENDED, null,
+        // El segundo cliente no tiene narrativa → narrativeMd null, sin sección "Análisis del mes".
+        ReportData data = reportService.buildReportData(clientBId, ReportType.EXTENDED, null,
                 MAY_FROM, MAY_TO, null, null, null);
         assertThat(data.hasNarrative()).isFalse();
         assertThat(markdownRenderer.render(data)).doesNotContain("Análisis del mes");

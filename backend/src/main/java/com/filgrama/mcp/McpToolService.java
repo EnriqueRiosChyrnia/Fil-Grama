@@ -50,8 +50,9 @@ import com.filgrama.reports.data.ReportData.PlatformKpis;
 /**
  * Lógica de las 7 tools MCP (spec/08). <b>No duplica queries</b>: reusa el {@link ReportService}
  * (mismo armado que {@code :preview}/export), el {@link MetricReportService} (series de cuenta) y
- * {@link ReportQueryRepository}. El scope se valida SIEMPRE en el backend vía {@link ClientAccessService}
- * antes de tocar datos (spec/11): un empleado nunca ve un cliente/cuenta ajeno. Solo
+ * {@link ReportQueryRepository}. Todo cliente/cuenta pedido pasa SIEMPRE por {@link ClientAccessService}
+ * (único choke point) antes de tocar datos — en v1 resuelve a todos los clientes para cualquier rol
+ * (spec/08 §Decisiones T5); cuando llegue el multi-tenant de spec/11 sólo cambia esa resolución. Solo
  * {@link #saveReportNarrative} escribe; el resto es de lectura.
  */
 @Service
