@@ -5,6 +5,12 @@
 > detalle disponible, pero priorizar **legibilidad y utilidad** por sobre densidad de datos.
 > Paleta: [[design/filgrama-colors.css]]. Catálogo CORE/EXTENDED: [[05-catalogo-metricas]].
 
+## Marca
+
+La marca de la empresa se escribe **"Fil-Grama"** (con guión y ambas mayúsculas) en TODO lo visible:
+pantallas, títulos, PDF, textos y diseños. `filgrama` (sin guión, minúsculas) es solo el nombre
+técnico de carpeta/repo/artefactos — nunca aparece de cara al usuario. Dominio: `fil-grama.com`.
+
 ## Principio rector: divulgación progresiva
 
 Capturamos y procesamos todo; **mostramos poco por defecto** y revelamos el detalle bajo demanda.

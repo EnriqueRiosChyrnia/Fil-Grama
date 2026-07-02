@@ -92,9 +92,13 @@ sobre sus datos de rendimiento si se etiqueta o se le entrega.
   `/mcp`). Un solo deploy: hoy accesible por el túnel cloudflared (`api.fil-grama.com`), mañana en el
   VPS sin cambios. Desde Claude Code: `claude mcp add --transport http`. Desde Claude Desktop/Cowork:
   conector remoto (header Bearer).
-- **Auth y scope:** el endpoint MCP exige el **JWT existente** (Bearer). Cada tool filtra por el
-  scope del usuario del token **en el backend** (empleado asignado → solo sus clientes; admin →
-  todo). Nunca filtrar por prompt. Alinea con [[11-escalabilidad-saas]] §aislamiento.
+- **Auth y scope:** el endpoint MCP exige el **JWT existente** (Bearer). Cada tool valida el acceso
+  **en el backend** pasando por un único punto (`ClientAccessService`); nunca filtrar por prompt.
+  **Resolución v1 (decidido 1-jul-2026):** admin Y empleado ven **todos** los clientes — igual que la
+  app web (spec/01: herramienta interna; `employee_client_priority` es favorito informativo, NO
+  permiso). El choke point queda construido y testeado: cuando llegue el multi-tenant
+  ([[11-escalabilidad-saas]] §aislamiento), la resolución cambia a asignación/organización tocando
+  solo esa clase.
 - **Lista FINAL de tools (v1 del MCP):** `list_clients`, `get_client_report_data(client_id, period)`,
   `get_metric_series(account_id, metric, from, to)`, `get_audience_demographics(client_id, period)`,
   `compare_periods(client_id, period_a, period_b)`, `get_posting_performance(client_id, by)`,
